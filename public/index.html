@@ -8,7 +8,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon-192.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <link rel="stylesheet" href="https://unpkg.com/cesium@1.120.0/Build/Cesium/Widgets/widgets.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -45,14 +45,9 @@
 
   <div class="layout">
     <div class="mapa-envoltorio">
-      <div id="cesiumContainer"></div>
+      <div id="mapa"></div>
       <div class="mapa-hud"></div>
       <div class="mapa-borde-glow"></div>
-
-      <div class="mapa-controles">
-        <button id="boton-ubicacion" class="control-mapa" type="button" title="Ver mi ubicación y girar el globo hacia ahí">📍</button>
-        <button id="boton-abrir-sos" class="control-mapa control-sos" type="button" title="Números de emergencia y compartir ubicación">🆘</button>
-      </div>
 
       <button id="boton-panel-movil" class="boton-panel-movil" type="button">
         📡 Alertas <span class="contador" id="contador-movil">0</span>
@@ -129,7 +124,7 @@
           <a href="https://www.gdacs.org/" target="_blank" rel="noopener">GDACS</a>.
           No es una fuente oficial de ningún país — para información oficial en Argentina consultá
           <a href="https://www.inpres.gob.ar/" target="_blank" rel="noopener">INPRES</a>.
-          Tocá el ícono 📍 para ver tu ubicación y la distancia a cada evento.
+          Tocá el ícono 📍 del mapa para ver tu ubicación y la distancia a cada evento.
         </p>
       </section>
 
@@ -259,7 +254,7 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/cesium@1.120.0/Build/Cesium/Cesium.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <script src="/config.js"></script>
   <script src="app.js"></script>
 </body>

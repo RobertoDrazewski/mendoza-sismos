@@ -118,10 +118,23 @@ body {
   position: relative;
 }
 
-#cesiumContainer {
+#mapa {
   position: absolute;
   inset: 0;
   background: #04070a;
+}
+
+/* Capa satelital: oscurecida y desaturada para look "hibrido nocturno" */
+.capa-satelite {
+  filter: grayscale(0.5) brightness(0.42) contrast(1.35) saturate(0.85);
+}
+
+/* Capa de calles/etiquetas: un halo cian suave, sin quemar el contraste */
+.capa-labels {
+  filter:
+    drop-shadow(0 0 1.5px rgba(0, 229, 255, 0.85))
+    drop-shadow(0 0 3px rgba(0, 194, 224, 0.45))
+    brightness(1.05);
 }
 
 /* Vignette sutil en los bordes, para que el foco quede en el centro */
@@ -141,28 +154,79 @@ body {
   box-shadow: inset 0 0 40px rgba(0, 229, 255, 0.08), inset 0 0 3px rgba(0, 229, 255, 0.25);
 }
 
-.cesium-viewer, .cesium-widget, .cesium-widget canvas {
+.leaflet-container {
   background: #04070a !important;
-  font-family: 'Rajdhani', sans-serif !important;
+  font-family: 'Rajdhani', sans-serif;
 }
 
-/* Cesium exige mostrar la atribucion de sus fuentes (Ion/OSM/etc) — la
-   dejamos, solo la re-vestimos en modo oscuro cian para que combine. */
-.cesium-viewer-bottom {
-  z-index: 470 !important;
+.leaflet-control-zoom a {
+  background: rgba(6, 20, 27, 0.9) !important;
+  color: var(--cian-suave) !important;
+  border: 1px solid var(--panel-borde) !important;
 }
 
-.cesium-credit-textContainer, .cesium-credit-textContainer a {
+.leaflet-control-zoom a:hover {
+  background: rgba(0, 229, 255, 0.18) !important;
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.4);
+}
+
+.leaflet-control-attribution {
+  background: rgba(4, 10, 14, 0.75) !important;
   color: var(--texto-tenue) !important;
-  font-size: 0.62rem !important;
 }
 
-.cesium-widget-credits { background: rgba(4, 10, 14, 0.55) !important; }
+.leaflet-control-attribution a { color: var(--cian-suave) !important; }
 
-/* Ocultamos la barra de herramientas por defecto de Cesium: usamos
-   nuestros propios controles flotantes (.mapa-controles) en su lugar. */
-.cesium-viewer-toolbar, .cesium-viewer-animationContainer, .cesium-viewer-timelineContainer {
-  display: none !important;
+/* Glow por magnitud en cada marcador (mismos colores de siempre) */
+.sismo-verde   { filter: drop-shadow(0 0 5px var(--verde))   drop-shadow(0 0 10px rgba(46, 204, 113, 0.6)); }
+.sismo-amarillo{ filter: drop-shadow(0 0 5px var(--amarillo))drop-shadow(0 0 10px rgba(241, 196, 15, 0.6)); }
+.sismo-naranja { filter: drop-shadow(0 0 6px var(--naranja)) drop-shadow(0 0 12px rgba(230, 126, 34, 0.6)); }
+.sismo-rojo    { filter: drop-shadow(0 0 7px var(--rojo))    drop-shadow(0 0 16px rgba(231, 76, 60, 0.7)); }
+
+.leaflet-popup-content-wrapper {
+  background: rgba(8, 18, 25, 0.96);
+  color: var(--texto);
+  border: 1px solid var(--panel-borde);
+  box-shadow: 0 0 18px rgba(0, 229, 255, 0.18);
+  border-radius: 8px;
+}
+
+.leaflet-popup-tip { background: rgba(8, 18, 25, 0.96); }
+
+.leaflet-popup-content {
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.leaflet-popup-content a { color: var(--cian-suave); }
+
+/* Iconos con emoji (incendios/catastrofes GDACS) */
+.icono-emoji {
+  background: rgba(6, 20, 27, 0.55);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.icono-fuego {
+  filter: drop-shadow(0 0 6px #ff5722) drop-shadow(0 0 12px rgba(255, 87, 34, 0.6));
+}
+
+.icono-catastrofe.alerta-red {
+  filter: drop-shadow(0 0 6px var(--rojo)) drop-shadow(0 0 12px rgba(231, 76, 60, 0.6));
+}
+.icono-catastrofe.alerta-orange {
+  filter: drop-shadow(0 0 6px var(--naranja)) drop-shadow(0 0 12px rgba(230, 126, 34, 0.6));
+}
+.icono-catastrofe.alerta-green {
+  filter: drop-shadow(0 0 5px var(--amarillo)) drop-shadow(0 0 10px rgba(241, 196, 15, 0.5));
+}
+
+.linea-evacuacion {
+  filter: drop-shadow(0 0 5px rgba(0, 229, 255, 0.85)) drop-shadow(0 0 10px rgba(0, 229, 255, 0.5));
 }
 
 /* ---------- Panel lateral (desktop) ---------- */
@@ -353,23 +417,6 @@ details ul {
 .control-mapa.activo {
   background: rgba(0, 229, 255, 0.25) !important;
   box-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
-}
-
-/* Contenedor de nuestros controles propios sobre el globo (reemplaza los
-   L.Control de Leaflet: ahora son botones HTML comunes, posicionados a mano) */
-.mapa-controles {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  z-index: 500;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.mapa-controles .control-mapa {
-  border-radius: 4px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
 }
 
 /* Checkboxes de capas en la barra superior */
@@ -715,11 +762,9 @@ details ul {
 
   .panel.abierto { transform: translateY(0); }
 
-  #cesiumContainer { height: 100%; }
+  #mapa { height: 100%; }
 
   .capas-toggle { flex-wrap: wrap; gap: 4px 10px; }
-
-  .mapa-controles { top: 10px; right: 10px; }
 
   .panel-sos { max-width: 100%; }
 }

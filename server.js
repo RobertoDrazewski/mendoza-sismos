@@ -19,10 +19,8 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Tokens/keys opcionales, gratuitos, que cada quien configura como variable
-// de entorno (nunca hardcodeados aca). Sin ellos la app sigue funcionando,
-// solo que sin globo fotorrealista y/o sin la capa de incendios — ver README.
-const CESIUM_ION_TOKEN = process.env.CESIUM_ION_TOKEN || '';
+// Key opcional y gratuita para la capa de incendios (NASA FIRMS). Sin ella
+// la app sigue funcionando igual, solo que sin esa capa — ver README.
 const FIRMS_API_KEY = process.env.FIRMS_API_KEY || '';
 
 // ---------------------------------------------------------------------
@@ -382,7 +380,6 @@ app.get('/config.js', (req, res) => {
   res.type('application/javascript');
   res.send(
     `window.APP_CONFIG = ${JSON.stringify({
-      cesiumIonToken: CESIUM_ION_TOKEN,
       firmsConfigurado: Boolean(FIRMS_API_KEY),
     })};`
   );
@@ -392,9 +389,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.listen(PORT, () => {
   console.log(`Ojo Global corriendo en http://localhost:${PORT}`);
-  if (!CESIUM_ION_TOKEN) {
-    console.log('  (sin CESIUM_ION_TOKEN: el globo va a verse con imágenes OpenStreetMap planas, no 3D fotorrealista — ver README)');
-  }
   if (!FIRMS_API_KEY) {
     console.log('  (sin FIRMS_API_KEY: la capa de incendios va a estar vacía — ver README)');
   }

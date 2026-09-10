@@ -1,12 +1,13 @@
 // Ojo Global — Alertas de Catástrofes (frontend)
-// Globo 3D con CesiumJS. Combina varias fuentes publicas y gratuitas:
+// Mapa con Leaflet (satelital oscurecido + calles con glow cian — el mismo
+// diseño "dark híbrido" que ya funcionaba bien). Combina varias fuentes
+// publicas y gratuitas:
 //   - Sismos:    /api/sismos (USGS + EMSC fusionados) + websocket EMSC en vivo
 //   - Incendios: /api/incendios (NASA FIRMS — necesita FIRMS_API_KEY, ver README)
 //   - Otras:     /api/catastrofes (GDACS: tsunamis, ciclones, inundaciones, volcanes)
 //
-// Al abrir la app, el globo gira hasta detectar tu ubicacion (geolocalizacion
-// del navegador) y hace zoom ahi. Si no se puede detectar, hace zoom a
-// Mendoza (el origen de este proyecto) como respaldo.
+// Al abrir la app, si el navegador te da permiso, el mapa hace zoom directo
+// a tu ubicación (geolocalizacion). Si no, arranca con una vista global.
 //
 // IMPORTANTE: esto avisa apenas las fuentes CONFIRMAN un evento, nunca en el
 // instante exacto en que empieza. No reemplaza a las Alertas de Sismos de
@@ -18,35 +19,51 @@ const EMSC_WS_URL = 'wss://www.seismicportal.eu/standing_order/websocket';
 const MENDOZA = { lat: -32.8908, lon: -68.8272 };
 const UMBRAL_EVACUACION_KM = 300; // no sugerir "alejate" de algo que esta a medio mundo
 
-// ---------------------------------------------------------------------
-// Config que manda el servidor (tokens gratuitos opcionales, ver server.js)
-// ---------------------------------------------------------------------
-const CONFIG = window.APP_CONFIG || { cesiumIonToken: '', firmsConfigurado: false };
-Cesium.Ion.defaultAccessToken = CONFIG.cesiumIonToken || undefined;
+const mapa = L.map('mapa', { zoomControl: false, worldCopyJump: true }).setView([10, 0], 2);
+L.control.zoom({ position: 'bottomleft' }).addTo(mapa);
+
+// Base "satelital oscura": imagenes reales de Esri World Imagery, oscurecidas
+// y desaturadas por CSS (ver .capa-satelite en style.css) para el look hibrido.
+L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  {
+    maxZoom: 18,
+    className: 'capa-satelite',
+    attribution: 'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics',
+  }
+).addTo(mapa);
+
+// Calles/nombres de lugares por encima, en modo oscuro con un halo cian sutil
+// (CARTO dark_only_labels: fondo transparente, solo calles y etiquetas).
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
+  maxZoom: 18,
+  className: 'capa-labels',
+  attribution: '&copy; OpenStreetMap, &copy; CARTO',
+}).addTo(mapa);
+
+const capaSismos = L.layerGroup().addTo(mapa);
+const capaIncendios = L.layerGroup().addTo(mapa);
+const capaCatastrofes = L.layerGroup().addTo(mapa);
+let capaEvacuacion = L.layerGroup().addTo(mapa);
 
 // ---------------------------------------------------------------------
-// Estado general
+// Estado
 // ---------------------------------------------------------------------
-let viewer = null;
-let girandoGlobo = false;
-
-let ultimosSismos = [];        // crudos, tal como los manda /api/sismos
+let ultimosSismos = [];
 let ultimosIncendios = [];
 let ultimasCatastrofes = [];
-let eventosCombinados = [];    // normalizados, para la lista y el calculo de "mas cercano"
+let eventosCombinados = [];
 
-let regionBBox = null;         // bbox que manda el backend (hoy: global)
+let regionBBox = null;
 let idsVistos = new Set();
 let primeraCargaCompleta = false;
 
-let miUbicacion = null;        // { lat, lon, precision }
-let entidadUbicacion = null;
-let entidadFlechaEvacuacion = null;
-
-let dsSismos, dsIncendios, dsCatastrofes; // Cesium.CustomDataSource por capa
+let miUbicacion = null;
+let marcadorUbicacion = null;
+let circuloPrecision = null;
 
 // ---------------------------------------------------------------------
-// Utilidades generales
+// Utilidades
 // ---------------------------------------------------------------------
 
 function colorPorMagnitud(mag) {
@@ -56,18 +73,26 @@ function colorPorMagnitud(mag) {
   return '#2ecc71';
 }
 
+function clasePorMagnitud(mag) {
+  if (mag >= 5) return 'sismo-rojo';
+  if (mag >= 4) return 'sismo-naranja';
+  if (mag >= 3) return 'sismo-amarillo';
+  return 'sismo-verde';
+}
+
+function radioPorMagnitud(mag) {
+  return Math.max(5, mag * 4);
+}
+
 function colorPorAlerta(nivel) {
   if (nivel === 'red') return '#e74c3c';
   if (nivel === 'orange') return '#e67e22';
-  return '#f1c40f'; // green de GDACS igual se muestra en amarillo tenue: sigue siendo una alerta activa
+  return '#f1c40f';
 }
 
 function formatearHora(epochMs) {
   if (!epochMs) return 'hora desconocida';
-  return new Date(epochMs).toLocaleString('es-AR', {
-    dateStyle: 'short',
-    timeStyle: 'medium',
-  });
+  return new Date(epochMs).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'medium' });
 }
 
 function distanciaKm(lat1, lon1, lat2, lon2) {
@@ -80,7 +105,6 @@ function distanciaKm(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-// Rumbo (bearing) inicial en grados desde el punto 1 hacia el punto 2.
 function rumbo(lat1, lon1, lat2, lon2) {
   const toRad = (d) => (d * Math.PI) / 180;
   const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
@@ -95,13 +119,25 @@ function rumboATexto(deg) {
   return direcciones[Math.round(deg / 45) % 8];
 }
 
+function destinoDesdeRumbo(lat, lon, rumboDeg, km) {
+  const R = 6371;
+  const brng = (rumboDeg * Math.PI) / 180;
+  const lat1 = (lat * Math.PI) / 180;
+  const lon1 = (lon * Math.PI) / 180;
+  const lat2 = Math.asin(Math.sin(lat1) * Math.cos(km / R) + Math.cos(lat1) * Math.sin(km / R) * Math.cos(brng));
+  const lon2 = lon1 + Math.atan2(
+    Math.sin(brng) * Math.sin(km / R) * Math.cos(lat1),
+    Math.cos(km / R) - Math.sin(lat1) * Math.sin(lat2)
+  );
+  return { lat: (lat2 * 180) / Math.PI, lon: (lon2 * 180) / Math.PI };
+}
+
 function textoDistancia(lat, lon) {
   if (!miUbicacion) return '';
   const km = distanciaKm(miUbicacion.lat, miUbicacion.lon, lat, lon);
   return `<span class="distancia">a ${Math.round(km)} km de vos</span>`;
 }
 
-// Beep corto generado con Web Audio API — no hace falta ningun archivo externo.
 function reproducirAlerta() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -130,174 +166,53 @@ function alertarSismoNuevo(sismo) {
   reproducirAlerta();
   mostrarBanner(sismo);
   if (window.Notification && Notification.permission === 'granted') {
-    new Notification('Nuevo sismo detectado', {
-      body: `M${sismo.magnitud.toFixed(1)} — ${sismo.lugar}`,
-    });
+    new Notification('Nuevo sismo detectado', { body: `M${sismo.magnitud.toFixed(1)} — ${sismo.lugar}` });
   }
 }
 
-// ---------------------------------------------------------------------
-// Texturas "glow" generadas en canvas (Cesium dibuja en WebGL, asi que el
-// glow cian/de colores no se puede lograr con CSS como en Leaflet: se
-// "hornea" directamente en la imagen del billboard).
-// ---------------------------------------------------------------------
-
-const cacheTexturas = new Map();
-
-function crearTexturaGlow(colorHex, emoji) {
-  const clave = `${colorHex}|${emoji || ''}`;
-  if (cacheTexturas.has(clave)) return cacheTexturas.get(clave);
-
-  const tam = 64;
-  const canvas = document.createElement('canvas');
-  canvas.width = tam;
-  canvas.height = tam;
-  const ctx = canvas.getContext('2d');
-  const cx = tam / 2;
-  const cy = tam / 2;
-
-  const gradiente = ctx.createRadialGradient(cx, cy, 0, cx, cy, tam / 2);
-  gradiente.addColorStop(0, colorHex);
-  gradiente.addColorStop(0.35, colorHex + 'cc');
-  gradiente.addColorStop(1, colorHex + '00');
-  ctx.fillStyle = gradiente;
-  ctx.beginPath();
-  ctx.arc(cx, cy, tam / 2, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.arc(cx, cy, tam / 7, 0, Math.PI * 2);
-  ctx.fillStyle = '#ffffff';
-  ctx.globalAlpha = 0.9;
-  ctx.fill();
-  ctx.globalAlpha = 1;
-
-  if (emoji) {
-    ctx.font = `${Math.floor(tam * 0.5)}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(emoji, cx, cy - 1);
-  }
-
-  const url = canvas.toDataURL();
-  cacheTexturas.set(clave, url);
-  return url;
-}
-
-// ---------------------------------------------------------------------
-// Inicializacion del globo Cesium
-// ---------------------------------------------------------------------
-
-async function inicializarViewer() {
-  const opcionesBase = {
-    timeline: false,
-    animation: false,
-    baseLayerPicker: false,
-    geocoder: false,
-    homeButton: false,
-    sceneModePicker: false,
-    navigationHelpButton: false,
-    fullscreenButton: false,
-    infoBox: false,
-    selectionIndicator: false,
-  };
-
-  if (CONFIG.cesiumIonToken) {
-    // Con token de Cesium Ion: terreno + imagenes de calidad de Ion.
-    viewer = new Cesium.Viewer('cesiumContainer', opcionesBase);
-    try {
-      const terreno = await Cesium.createWorldTerrainAsync();
-      viewer.terrainProvider = terreno;
-    } catch (e) {
-      console.warn('No se pudo cargar el terreno de Cesium Ion, sigo con terreno plano.', e);
-    }
-    try {
-      const tileset3D = await Cesium.createGooglePhotorealistic3DTileset();
-      viewer.scene.primitives.add(tileset3D);
-    } catch (e) {
-      console.warn('No se pudieron cargar los 3D Tiles fotorrealistas (puede que tu cuenta de Ion no los tenga habilitados).', e);
-    }
-  } else {
-    // Sin token: globo 3D igual, con imagenes libres de OpenStreetMap (sin
-    // terreno/edificios fotorrealistas, pero sin necesitar ninguna cuenta).
-    viewer = new Cesium.Viewer('cesiumContainer', {
-      ...opcionesBase,
-      imageryProvider: new Cesium.OpenStreetMapImageryProvider({
-        url: 'https://tile.openstreetmap.org/',
-      }),
-      terrainProvider: new Cesium.EllipsoidTerrainProvider(),
-    });
-  }
-
-  viewer.scene.globe.enableLighting = true; // dia/noche real sobre el globo, se ve mejor
-  viewer.scene.backgroundColor = Cesium.Color.fromCssColorString('#05080c');
-  viewer.scene.skyAtmosphere.hueShift = -0.03;
-  viewer.scene.skyAtmosphere.saturationShift = -0.2;
-  viewer.clock.shouldAnimate = true; // para que el terminador dia/noche se mueva
-
-  dsSismos = new Cesium.CustomDataSource('sismos');
-  dsIncendios = new Cesium.CustomDataSource('incendios');
-  dsCatastrofes = new Cesium.CustomDataSource('catastrofes');
-  await Promise.all([
-    viewer.dataSources.add(dsSismos),
-    viewer.dataSources.add(dsIncendios),
-    viewer.dataSources.add(dsCatastrofes),
-  ]);
-
-  // Vista inicial: todo el planeta, antes de arrancar el giro.
-  viewer.camera.setView({
-    destination: Cesium.Cartesian3.fromDegrees(-58, -10, 22000000),
-  });
-}
-
-function empezarGiroGlobo() {
-  girandoGlobo = true;
-  viewer.scene.postRender.addEventListener(tickGiroGlobo);
-}
-
-function tickGiroGlobo() {
-  if (!girandoGlobo) return;
-  viewer.scene.camera.rotate(Cesium.Cartesian3.UNIT_Z, -0.0007);
-}
-
-function detenerGiroGlobo() {
-  girandoGlobo = false;
-  viewer.scene.postRender.removeEventListener(tickGiroGlobo);
-}
-
-function volarHacia(lat, lon, alturaMetros = 25000) {
-  viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(lon, lat, alturaMetros),
-    duration: 3,
+function iconoEmoji(emoji, claseExtra) {
+  return L.divIcon({
+    className: `icono-emoji ${claseExtra || ''}`,
+    html: `<span>${emoji}</span>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
   });
 }
 
 // ---------------------------------------------------------------------
-// Capa: sismos (USGS + EMSC)
+// Capa: sismos
 // ---------------------------------------------------------------------
 
-function claveNuevo(hora) {
-  return Date.now() - hora < 5 * 60 * 1000; // "nuevo" durante 5 minutos
-}
+function render() {
+  capaSismos.clearLayers();
 
-function dibujarSismos() {
-  dsSismos.entities.removeAll();
-  ultimosSismos.forEach((s) => {
-    const color = colorPorMagnitud(s.magnitud);
-    const esNuevo = claveNuevo(s.hora);
-    dsSismos.entities.add({
-      id: `sismo:${s.id}`,
-      position: Cesium.Cartesian3.fromDegrees(s.lon, s.lat),
-      billboard: {
-        image: crearTexturaGlow(color, ''),
-        scale: esNuevo ? 0.85 : 0.6,
-        verticalOrigin: Cesium.VerticalOrigin.CENTER,
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
-      },
-      description: `<strong>M${s.magnitud.toFixed(1)}</strong> — ${s.lugar}`,
-      properties: { tipo: 'sismo', datos: s },
+  const ordenados = [...ultimosSismos].sort((a, b) => b.hora - a.hora);
+
+  ordenados.forEach((s) => {
+    const marcador = L.circleMarker([s.lat, s.lon], {
+      radius: radioPorMagnitud(s.magnitud),
+      color: colorPorMagnitud(s.magnitud),
+      fillColor: colorPorMagnitud(s.magnitud),
+      fillOpacity: 0.65,
+      weight: 1.5,
+      className: clasePorMagnitud(s.magnitud),
     });
+
+    marcador.bindPopup(`
+      <strong>M${s.magnitud.toFixed(1)}</strong> — ${s.lugar}<br/>
+      ${formatearHora(s.hora)}<br/>
+      Profundidad: ${s.profundidad_km ? s.profundidad_km.toFixed(1) + ' km' : 'sin dato'}<br/>
+      ${miUbicacion ? textoDistancia(s.lat, s.lon) + '<br/>' : ''}
+      Fuente: ${s.fuentes.join(' + ')}<br/>
+      <a href="${s.url}" target="_blank" rel="noopener">Ver detalle</a>
+    `);
+    marcador.addTo(capaSismos);
   });
+
+  reconstruirCombinadoYRenderPanel();
+
+  const contadorMovil = document.getElementById('contador-movil');
+  if (contadorMovil) contadorMovil.textContent = ordenados.length;
 }
 
 async function cargarSismos() {
@@ -321,8 +236,7 @@ async function cargarSismos() {
     }
     primeraCargaCompleta = true;
 
-    dibujarSismos();
-    reconstruirCombinadoYRenderPanel();
+    render();
 
     const hora = new Date(data.generado).toLocaleTimeString('es-AR');
     estado.textContent = `${data.total} sismos · actualizado ${hora}`;
@@ -354,12 +268,7 @@ let intentosReconexion = 0;
 
 function estaDentroDeLaRegion(lat, lon) {
   if (!regionBBox) return true;
-  return (
-    lat >= regionBBox.minLat &&
-    lat <= regionBBox.maxLat &&
-    lon >= regionBBox.minLon &&
-    lon <= regionBBox.maxLon
-  );
+  return lat >= regionBBox.minLat && lat <= regionBBox.maxLat && lon >= regionBBox.minLon && lon <= regionBBox.maxLon;
 }
 
 function ponerEstadoVivo(estado, texto) {
@@ -386,9 +295,7 @@ function parsearMensajeEMSC(msg) {
   const time = props.time ? Date.parse(props.time) : null;
   const lugar = props.flynn_region || props.region || 'Ubicación desconocida';
 
-  if (!unid || lat === undefined || lon === undefined || !time || Number.isNaN(mag)) {
-    return null;
-  }
+  if (!unid || lat === undefined || lon === undefined || !time || Number.isNaN(mag)) return null;
 
   return {
     accion,
@@ -436,20 +343,16 @@ function conectarEMSC() {
 
     if (accion === 'delete') {
       ultimosSismos = ultimosSismos.filter((s) => s.id !== sismo.id);
-      dibujarSismos();
-      reconstruirCombinadoYRenderPanel();
+      render();
       return;
     }
 
-    if (!estaDentroDeLaRegion(sismo.lat, sismo.lon) || sismo.magnitud < minmag) {
-      return;
-    }
+    if (!estaDentroDeLaRegion(sismo.lat, sismo.lon) || sismo.magnitud < minmag) return;
 
     const yaExistia = ultimosSismos.some((s) => s.id === sismo.id);
     ultimosSismos = ultimosSismos.filter((s) => s.id !== sismo.id);
     ultimosSismos.push(sismo);
-    dibujarSismos();
-    reconstruirCombinadoYRenderPanel();
+    render();
 
     if (!yaExistia && !idsVistos.has(sismo.id) && primeraCargaCompleta) {
       idsVistos.add(sismo.id);
@@ -457,10 +360,7 @@ function conectarEMSC() {
     }
   };
 
-  socketEMSC.onerror = () => {
-    ponerEstadoVivo('reconectando', 'reconectando');
-  };
-
+  socketEMSC.onerror = () => ponerEstadoVivo('reconectando', 'reconectando');
   socketEMSC.onclose = () => {
     ponerEstadoVivo('reconectando', 'reconectando');
     programarReconexion();
@@ -477,34 +377,36 @@ function programarReconexion() {
 // Capa: incendios (NASA FIRMS)
 // ---------------------------------------------------------------------
 
+function horaDesdeFIRMS(fecha, horaUtc) {
+  if (!fecha || !horaUtc) return null;
+  const limpio = String(horaUtc).padStart(4, '0');
+  const parseado = Date.parse(`${fecha}T${limpio.slice(0, 2)}:${limpio.slice(2)}:00Z`);
+  return Number.isNaN(parseado) ? null : parseado;
+}
+
 async function cargarIncendios() {
   try {
     const res = await fetch('/api/incendios');
     const data = await res.json();
     ultimosIncendios = data.incendios || [];
 
-    dsIncendios.entities.removeAll();
+    capaIncendios.clearLayers();
     ultimosIncendios.forEach((f) => {
-      dsIncendios.entities.add({
-        id: `incendio:${f.id}`,
-        position: Cesium.Cartesian3.fromDegrees(f.lon, f.lat),
-        billboard: {
-          image: crearTexturaGlow('#ff5722', '🔥'),
-          scale: 0.55,
-          verticalOrigin: Cesium.VerticalOrigin.CENTER,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-        properties: { tipo: 'incendio', datos: f },
-      });
+      const marcador = L.marker([f.lat, f.lon], { icon: iconoEmoji('🔥', 'icono-fuego') });
+      marcador.bindPopup(
+        `<strong>Foco de incendio activo</strong>${f.frp ? ` — potencia ${Math.round(f.frp)} MW` : ''}<br/>` +
+        `${f.fecha || ''} ${f.hora_utc || ''} UTC<br/>${miUbicacion ? textoDistancia(f.lat, f.lon) : ''}`
+      );
+      marcador.addTo(capaIncendios);
     });
 
-    const notaIncendios = document.getElementById('nota-incendios');
+    const nota = document.getElementById('nota-incendios');
     if (!data.configurado) {
-      if (notaIncendios) notaIncendios.textContent = '🔥 Incendios: falta configurar FIRMS_API_KEY (gratis) — ver README.';
+      if (nota) nota.textContent = '🔥 Incendios: falta configurar FIRMS_API_KEY (gratis) — ver README.';
     } else if (data.error) {
-      if (notaIncendios) notaIncendios.textContent = `🔥 Incendios: no se pudo actualizar (${data.error}).`;
-    } else if (notaIncendios) {
-      notaIncendios.textContent = `🔥 ${data.total} incendios activos detectados en las últimas 24 h (NASA FIRMS).`;
+      if (nota) nota.textContent = `🔥 Incendios: no se pudo actualizar (${data.error}).`;
+    } else if (nota) {
+      nota.textContent = `🔥 ${data.total} incendios activos detectados en las últimas 24 h (NASA FIRMS).`;
     }
 
     reconstruirCombinadoYRenderPanel();
@@ -523,24 +425,22 @@ async function cargarCatastrofes() {
     const data = await res.json();
     ultimasCatastrofes = data.catastrofes || [];
 
-    dsCatastrofes.entities.removeAll();
+    capaCatastrofes.clearLayers();
     ultimasCatastrofes.forEach((c) => {
-      dsCatastrofes.entities.add({
-        id: `catastrofe:${c.id}`,
-        position: Cesium.Cartesian3.fromDegrees(c.lon, c.lat),
-        billboard: {
-          image: crearTexturaGlow(colorPorAlerta(c.nivel_alerta), c.emoji),
-          scale: 0.6,
-          verticalOrigin: Cesium.VerticalOrigin.CENTER,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-        properties: { tipo: 'catastrofe', datos: c },
+      const marcador = L.marker([c.lat, c.lon], {
+        icon: iconoEmoji(c.emoji, `icono-catastrofe alerta-${c.nivel_alerta}`),
       });
+      marcador.bindPopup(
+        `<strong>${c.tipo_nombre}</strong><br/>${c.titulo}<br/>${c.pais || ''}<br/>` +
+        `${formatearHora(c.hora)}<br/>${miUbicacion ? textoDistancia(c.lat, c.lon) + '<br/>' : ''}` +
+        `<a href="${c.url}" target="_blank" rel="noopener">Ver detalle</a>`
+      );
+      marcador.addTo(capaCatastrofes);
     });
 
-    const notaCatastrofes = document.getElementById('nota-catastrofes');
-    if (notaCatastrofes) {
-      notaCatastrofes.textContent = data.error
+    const nota = document.getElementById('nota-catastrofes');
+    if (nota) {
+      nota.textContent = data.error
         ? `🌊 Otras catástrofes: no se pudo actualizar (${data.error}).`
         : `🌊 ${data.total} alertas activas de GDACS (tsunamis, ciclones, inundaciones, volcanes).`;
     }
@@ -555,52 +455,24 @@ async function cargarCatastrofes() {
 // Panel lateral: lista combinada + "más cercano" + sugerencia de evacuación
 // ---------------------------------------------------------------------
 
-function horaDesdeFIRMS(fecha, horaUtc) {
-  if (!fecha || !horaUtc) return null;
-  const limpio = String(horaUtc).padStart(4, '0');
-  const parseado = Date.parse(`${fecha}T${limpio.slice(0, 2)}:${limpio.slice(2)}:00Z`);
-  return Number.isNaN(parseado) ? null : parseado;
-}
-
 function reconstruirCombinadoYRenderPanel() {
   const deSismos = ultimosSismos.map((s) => ({
-    tipo: 'sismo',
-    icono: '🔴',
-    titulo: `M${s.magnitud.toFixed(1)} — ${s.lugar}`,
-    lat: s.lat,
-    lon: s.lon,
-    hora: s.hora,
-    url: s.url,
+    tipo: 'sismo', icono: '🔴', titulo: `M${s.magnitud.toFixed(1)} — ${s.lugar}`, lat: s.lat, lon: s.lon, hora: s.hora,
   }));
   const deIncendios = ultimosIncendios.map((f) => ({
-    tipo: 'incendio',
-    icono: '🔥',
+    tipo: 'incendio', icono: '🔥',
     titulo: 'Foco de incendio activo' + (f.frp ? ` (potencia ${Math.round(f.frp)} MW)` : ''),
-    lat: f.lat,
-    lon: f.lon,
-    hora: horaDesdeFIRMS(f.fecha, f.hora_utc),
-    url: 'https://firms.modaps.eosdis.nasa.gov/',
+    lat: f.lat, lon: f.lon, hora: horaDesdeFIRMS(f.fecha, f.hora_utc),
   }));
   const deCatastrofes = ultimasCatastrofes.map((c) => ({
-    tipo: 'catastrofe',
-    icono: c.emoji,
-    titulo: `${c.tipo_nombre} — ${c.titulo}`,
-    lat: c.lat,
-    lon: c.lon,
-    hora: c.hora,
-    url: c.url,
+    tipo: 'catastrofe', icono: c.emoji, titulo: `${c.tipo_nombre} — ${c.titulo}`, lat: c.lat, lon: c.lon, hora: c.hora,
   }));
 
-  eventosCombinados = [...deSismos, ...deIncendios, ...deCatastrofes].sort(
-    (a, b) => (b.hora || 0) - (a.hora || 0)
-  );
+  eventosCombinados = [...deSismos, ...deIncendios, ...deCatastrofes].sort((a, b) => (b.hora || 0) - (a.hora || 0));
 
   actualizarLista();
   actualizarMasCercano();
   actualizarSugerenciaEvacuacion();
-
-  const contadorMovil = document.getElementById('contador-movil');
-  if (contadorMovil) contadorMovil.textContent = eventosCombinados.length;
 }
 
 function actualizarLista() {
@@ -641,16 +513,10 @@ function actualizarMasCercano() {
   el.classList.remove('oculto');
 }
 
-// Sugerencia de evacuacion: HEURISTICA, no una ruta oficial. Calcula el
-// rumbo desde el evento mas cercano hacia tu ubicacion, y sugiere seguir
-// alejandote en esa misma direccion. Solo se muestra si el evento esta
-// razonablemente cerca (ver UMBRAL_EVACUACION_KM).
+// Sugerencia de evacuacion: HEURISTICA, no una ruta oficial.
 function actualizarSugerenciaEvacuacion() {
   const el = document.getElementById('sugerencia-evacuacion');
-  if (entidadFlechaEvacuacion) {
-    viewer.entities.remove(entidadFlechaEvacuacion);
-    entidadFlechaEvacuacion = null;
-  }
+  capaEvacuacion.clearLayers();
 
   if (!miUbicacion || eventosCombinados.length === 0) {
     el.classList.add('oculto');
@@ -685,105 +551,93 @@ function actualizarSugerenciaEvacuacion() {
   `;
   el.classList.remove('oculto');
 
-  // Flecha visual en el globo: una linea corta desde tu ubicacion en la
-  // direccion sugerida.
-  const destKm = 60;
-  const destino = destinoDesdeRumbo(miUbicacion.lat, miUbicacion.lon, direccionGrados, destKm);
-  entidadFlechaEvacuacion = viewer.entities.add({
-    id: 'flecha-evacuacion',
-    polyline: {
-      positions: Cesium.Cartesian3.fromDegreesArray([
-        miUbicacion.lon, miUbicacion.lat,
-        destino.lon, destino.lat,
-      ]),
-      width: 3,
-      material: new Cesium.PolylineGlowMaterialProperty({
-        glowPower: 0.3,
-        color: Cesium.Color.fromCssColorString('#00e5ff'),
-      }),
-      clampToGround: false,
-    },
-  });
-}
-
-function destinoDesdeRumbo(lat, lon, rumboDeg, km) {
-  const R = 6371;
-  const brng = (rumboDeg * Math.PI) / 180;
-  const lat1 = (lat * Math.PI) / 180;
-  const lon1 = (lon * Math.PI) / 180;
-  const lat2 = Math.asin(Math.sin(lat1) * Math.cos(km / R) + Math.cos(lat1) * Math.sin(km / R) * Math.cos(brng));
-  const lon2 = lon1 + Math.atan2(
-    Math.sin(brng) * Math.sin(km / R) * Math.cos(lat1),
-    Math.cos(km / R) - Math.sin(lat1) * Math.sin(lat2)
-  );
-  return { lat: (lat2 * 180) / Math.PI, lon: (lon2 * 180) / Math.PI };
+  const destino = destinoDesdeRumbo(miUbicacion.lat, miUbicacion.lon, direccionGrados, 60);
+  L.polyline(
+    [[miUbicacion.lat, miUbicacion.lon], [destino.lat, destino.lon]],
+    { className: 'linea-evacuacion', color: '#00e5ff', weight: 3, opacity: 0.85 }
+  ).addTo(capaEvacuacion);
 }
 
 // ---------------------------------------------------------------------
-// "Mi ubicacion": geolocalizacion + giro/zoom del globo
+// "Mi ubicacion": geolocalizacion + distancia real + centrado
 // ---------------------------------------------------------------------
 
-function actualizarEntidadUbicacion() {
-  if (entidadUbicacion) viewer.entities.remove(entidadUbicacion);
-  entidadUbicacion = viewer.entities.add({
-    id: 'mi-ubicacion',
-    position: Cesium.Cartesian3.fromDegrees(miUbicacion.lon, miUbicacion.lat),
-    point: {
-      pixelSize: 14,
-      color: Cesium.Color.fromCssColorString('#00e5ff'),
-      outlineColor: Cesium.Color.WHITE,
-      outlineWidth: 2,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY,
-    },
-    description: 'Estás acá (aproximado)',
-  });
+function actualizarMarcadorUbicacion() {
+  if (marcadorUbicacion) mapa.removeLayer(marcadorUbicacion);
+  if (circuloPrecision) mapa.removeLayer(circuloPrecision);
+
+  marcadorUbicacion = L.circleMarker([miUbicacion.lat, miUbicacion.lon], {
+    radius: 8,
+    color: '#00e5ff',
+    fillColor: '#00e5ff',
+    fillOpacity: 0.9,
+    weight: 2,
+    className: 'marcador-ubicacion',
+  }).addTo(mapa).bindPopup('Estás acá (aproximado)');
+
+  circuloPrecision = L.circle([miUbicacion.lat, miUbicacion.lon], {
+    radius: miUbicacion.precision || 500,
+    color: '#00e5ff',
+    weight: 1,
+    fillOpacity: 0.07,
+  }).addTo(mapa);
 }
 
-function pedirUbicacion({ centrar = true, esAutomatico = false } = {}) {
+function pedirUbicacion({ boton, centrar = true, esAutomatico = false, zoom = 9 } = {}) {
   if (!navigator.geolocation) {
-    detenerGiroGlobo();
-    volarHacia(MENDOZA.lat, MENDOZA.lon, 900000);
     if (!esAutomatico) alert('Tu navegador no soporta geolocalización.');
     return;
   }
-
+  if (boton) boton.classList.add('activo');
   navigator.geolocation.getCurrentPosition(
     (pos) => {
-      miUbicacion = {
-        lat: pos.coords.latitude,
-        lon: pos.coords.longitude,
-        precision: pos.coords.accuracy,
-      };
-      actualizarEntidadUbicacion();
-      detenerGiroGlobo();
-      if (centrar) volarHacia(miUbicacion.lat, miUbicacion.lon, 400000);
+      miUbicacion = { lat: pos.coords.latitude, lon: pos.coords.longitude, precision: pos.coords.accuracy };
+      actualizarMarcadorUbicacion();
+      if (centrar) mapa.flyTo([miUbicacion.lat, miUbicacion.lon], Math.max(mapa.getZoom(), zoom));
       reconstruirCombinadoYRenderPanel();
     },
     (err) => {
-      detenerGiroGlobo();
-      volarHacia(MENDOZA.lat, MENDOZA.lon, 900000);
+      if (boton) boton.classList.remove('activo');
       if (!esAutomatico) {
         alert('No pudimos obtener tu ubicación: ' + err.message);
       } else {
-        const estado = document.getElementById('estado');
-        estado.textContent = 'No detectamos tu ubicación — mostrando Mendoza, el origen del proyecto.';
+        console.warn('No se pudo detectar la ubicación automáticamente', err.message);
       }
     },
     { enableHighAccuracy: true, timeout: 10000 }
   );
 }
 
-document.getElementById('boton-ubicacion').addEventListener('click', () => pedirUbicacion());
+const ControlUbicacion = L.Control.extend({
+  options: { position: 'topright' },
+  onAdd: function () {
+    const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+    const btn = L.DomUtil.create('a', 'control-mapa', div);
+    btn.href = '#';
+    btn.title = 'Ver mi ubicación y la distancia a cada evento';
+    btn.innerHTML = '📍';
+    L.DomEvent.disableClickPropagation(div);
+    L.DomEvent.disableScrollPropagation(div);
+    L.DomEvent.on(btn, 'click', (e) => {
+      L.DomEvent.preventDefault(e);
+      pedirUbicacion({ boton: btn });
+    });
+    return div;
+  },
+});
+mapa.addControl(new ControlUbicacion());
 
 // ---------------------------------------------------------------------
 // Capas: checkboxes
 // ---------------------------------------------------------------------
 
 document.getElementById('capa-incendios').addEventListener('change', (e) => {
-  dsIncendios.show = e.target.checked;
+  if (e.target.checked) capaIncendios.addTo(mapa);
+  else mapa.removeLayer(capaIncendios);
 });
 document.getElementById('capa-catastrofes').addEventListener('change', (e) => {
-  dsCatastrofes.show = e.target.checked;
+  if (e.target.checked) capaCatastrofes.addTo(mapa);
+  else mapa.removeLayer(capaCatastrofes);
 });
 
 // ---------------------------------------------------------------------
@@ -793,12 +647,29 @@ document.getElementById('capa-catastrofes').addEventListener('change', (e) => {
 function abrirSOS() {
   document.getElementById('fondo-sos').classList.remove('oculto');
 }
-
 function cerrarSOS() {
   document.getElementById('fondo-sos').classList.add('oculto');
 }
 
-document.getElementById('boton-abrir-sos').addEventListener('click', abrirSOS);
+const ControlSOS = L.Control.extend({
+  options: { position: 'topright' },
+  onAdd: function () {
+    const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+    const btn = L.DomUtil.create('a', 'control-mapa control-sos', div);
+    btn.href = '#';
+    btn.title = 'Números de emergencia y compartir ubicación';
+    btn.innerHTML = '🆘';
+    L.DomEvent.disableClickPropagation(div);
+    L.DomEvent.disableScrollPropagation(div);
+    L.DomEvent.on(btn, 'click', (e) => {
+      L.DomEvent.preventDefault(e);
+      abrirSOS();
+    });
+    return div;
+  },
+});
+mapa.addControl(new ControlSOS());
+
 document.getElementById('boton-abrir-sos-2').addEventListener('click', abrirSOS);
 document.getElementById('boton-cerrar-sos').addEventListener('click', cerrarSOS);
 document.getElementById('fondo-sos').addEventListener('click', (e) => {
@@ -829,9 +700,7 @@ document.getElementById('boton-compartir-ubicacion').addEventListener('click', (
       }
       window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
     },
-    (err) => {
-      alert('No pudimos obtener tu ubicación: ' + err.message);
-    },
+    (err) => alert('No pudimos obtener tu ubicación: ' + err.message),
     { enableHighAccuracy: true, timeout: 12000 }
   );
 });
@@ -859,47 +728,37 @@ if (botonPanelMovil && panelLateral) {
   botonPanelMovil.addEventListener('click', () => {
     panelLateral.classList.toggle('abierto');
   });
+  mapa.on('click dragstart', () => {
+    panelLateral.classList.remove('abierto');
+  });
 }
 
 // ---------------------------------------------------------------------
 // Arranque
 // ---------------------------------------------------------------------
 
-async function arrancar() {
-  if (window.Notification && Notification.permission === 'default') {
-    Notification.requestPermission();
-  }
-
-  mostrarAlertaSegunPlataforma();
-
-  await inicializarViewer();
-  empezarGiroGlobo();
-
-  // Aviso opcional sobre modo degradado sin token de Cesium Ion.
-  if (!CONFIG.cesiumIonToken) {
-    const estado = document.getElementById('estado');
-    estado.title = 'Modo sin Cesium Ion: mapa base OpenStreetMap, sin 3D fotorrealista. Configurá CESIUM_ION_TOKEN para mejorarlo (ver README).';
-  }
-
-  cargarSismos();
-  setInterval(cargarSismos, REFRESCO_SISMOS_MS);
-  conectarEMSC();
-
-  cargarIncendios();
-  setInterval(cargarIncendios, REFRESCO_OTRAS_MS);
-
-  cargarCatastrofes();
-  setInterval(cargarCatastrofes, REFRESCO_OTRAS_MS);
-
-  // Giro del globo hasta detectar ubicacion (o Mendoza como respaldo a los 10s).
-  pedirUbicacion({ centrar: true, esAutomatico: true });
-
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {
-      // si falla el registro, la app sigue funcionando igual, solo sin
-      // instalacion PWA offline.
-    });
-  }
+if (window.Notification && Notification.permission === 'default') {
+  Notification.requestPermission();
 }
 
-arrancar();
+mostrarAlertaSegunPlataforma();
+cargarSismos();
+setInterval(cargarSismos, REFRESCO_SISMOS_MS);
+conectarEMSC();
+
+cargarIncendios();
+setInterval(cargarIncendios, REFRESCO_OTRAS_MS);
+
+cargarCatastrofes();
+setInterval(cargarCatastrofes, REFRESCO_OTRAS_MS);
+
+// Si el navegador ya tiene permiso (o lo concede al toque), centramos solos;
+// si no, el mapa se queda en la vista global y el usuario usa el botón 📍.
+pedirUbicacion({ centrar: true, esAutomatico: true, zoom: 9 });
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {
+    // si falla el registro, la app sigue funcionando igual, solo sin
+    // instalacion PWA offline.
+  });
+}

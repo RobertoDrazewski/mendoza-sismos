@@ -1,15 +1,16 @@
 # Ojo Global — Alertas de Catástrofes
 
-Globo 3D en vivo con alertas de catástrofes naturales **donde sea que estés**:
+Mapa en vivo con alertas de catástrofes naturales **donde sea que estés**:
 sismos, incendios activos y otras catástrofes (tsunamis, ciclones, inundaciones,
-volcanes). Gratis, pensado para que cualquiera lo pueda levantar sin depender
-de una cuenta paga. Nació como un proyecto solo para Mendoza — ahora que la
-app detecta tu ubicación, el alcance es global, pero el espíritu sigue siendo
-el mismo: alertar rápido y ser honesto sobre qué es y qué no es cada cosa.
+volcanes). Gratis, sin necesidad de ninguna cuenta paga. Nació como un
+proyecto solo para Mendoza — ahora que la app detecta tu ubicación, el
+alcance es global, pero el espíritu sigue siendo el mismo: alertar rápido y
+ser honesto sobre qué es y qué no es cada cosa.
 
-Al abrir la app, el globo **gira hasta detectar tu ubicación** (geolocalización
-del navegador) y hace zoom ahí. Si no se puede detectar, muestra Mendoza —
-el origen de este proyecto — como respaldo.
+Estética "dark híbrido" (satélite oscurecido + calles con glow cian): mapa
+satelital real (Esri World Imagery) oscurecido por CSS + calles/etiquetas
+(CARTO dark_only_labels) con halo cian. Al abrir la app, si le das permiso
+de ubicación, el mapa hace zoom directo ahí.
 
 Combina varias fuentes públicas y gratuitas:
 
@@ -48,39 +49,20 @@ npm start
 Después abrí [http://localhost:3000](http://localhost:3000) en el navegador.
 Si el puerto 3000 ya lo estás usando para otra cosa, corré `PORT=4000 npm start`.
 
-**Así, sin configurar nada, ya funciona:** vas a ver el globo 3D (con
-imágenes libres de OpenStreetMap), sismos en vivo, y la capa de "otras
-catástrofes" (GDACS). Lo único que no vas a ver sin configurarlo es la capa
-de incendios y el terreno/imágenes fotorrealistas de Cesium — ver abajo.
+**Así, sin configurar nada, ya funciona:** vas a ver el mapa dark híbrido,
+sismos en vivo, y la capa de "otras catástrofes" (GDACS). Lo único que no
+vas a ver sin configurar una key gratuita es la capa de incendios — ver
+abajo.
 
 Podés instalarla como app (PWA): en el navegador, "Agregar a pantalla de
 inicio" (iPhone) o el ícono de instalar de Chrome (Android/desktop). Sirve
 sobre todo en iPhone, donde no hay alerta nativa de sismos.
 
-## Variables de entorno opcionales (las dos son gratis)
+## Variable de entorno opcional (gratis)
 
-Ninguna es obligatoria — la app arranca y funciona sin ellas, con las
-limitaciones que se explican abajo. Se configuran como variables de entorno,
-nunca como texto pegado en el código.
-
-### `CESIUM_ION_TOKEN` — globo fotorrealista
-
-Sin esta variable, el globo se ve en 3D real (podés rotarlo, inclinarlo,
-hacer zoom) pero con imágenes libres de OpenStreetMap y sin terreno/edificios
-fotorrealistas. Con un token de [Cesium Ion](https://ion.cesium.com/) (cuenta
-gratuita, plan "Community" para uso personal/no comercial), la app carga
-además terreno real y los **3D Tiles fotorrealistas de Google** — el mismo
-efecto que usa el proyecto original [God's Eye
-View](https://github.com/bilawalsidhu/gods-eye-view) para poder "bajar" a
-nivel calle en 3D.
-
-Cómo conseguirlo: creá una cuenta gratis en [ion.cesium.com](https://ion.cesium.com/),
-andá a "Access Tokens" y copiá el token por defecto (o creá uno nuevo).
-Después:
-
-```bash
-CESIUM_ION_TOKEN=tu_token_aca npm start
-```
+No es obligatoria — la app arranca y funciona sin ella, solo que sin la capa
+de incendios. Se configura como variable de entorno, nunca como texto
+pegado en el código.
 
 ### `FIRMS_API_KEY` — capa de incendios activos
 
@@ -94,16 +76,11 @@ en las últimas 24 h en todo el mundo.
 FIRMS_API_KEY=tu_key_aca npm start
 ```
 
-Podés combinar las dos:
-
-```bash
-CESIUM_ION_TOKEN=... FIRMS_API_KEY=... npm start
-```
-
 ## Qué vas a ver
 
-- **Globo 3D** que gira solo hasta detectar tu ubicación y hace zoom ahí,
-  con iluminación día/noche real y un look "dark híbrido" con glow cian.
+- Mapa satelital oscurecido con calles/nombres en glow cian, que hace zoom
+  directo a tu ubicación si le das permiso (o se queda en la vista global
+  si no).
 - **Sismos** con el mismo esquema de colores de siempre (verde < 3.0, amarillo
   3-4, naranja 4-5, rojo 5+), con su propio glow, más rápido con el websocket
   de EMSC.
@@ -112,7 +89,7 @@ CESIUM_ION_TOKEN=... FIRMS_API_KEY=... npm start
   mostrar/ocultar la capa.
 - Indicador **"● en vivo / reconectando"** honesto sobre el estado del canal
   rápido (websocket).
-- Botón **📍 Mi ubicación**: geolocalización, marcador en el globo, y una
+- Botón **📍 Mi ubicación**: geolocalización, marcador en el mapa, y una
   sección de "**sugerencia de evacuación**" — ver aclaración importante abajo.
 - Botón **🆘 Emergencias**: números reales de Argentina (911, Ecogas, EDEMSA)
   con una nota clara para quien esté fuera de Argentina, y un botón para
@@ -166,14 +143,29 @@ América, 000 en Australia, etc.).
 ## Qué tiene el proyecto original (God's Eye View) que esto NO tiene
 
 Este proyecto se inspira en [God's Eye
-View](https://github.com/bilawalsidhu/gods-eye-view) pero no es un fork
-completo — reusa la idea del globo 3D y algunas fuentes, enfocado en
-catástrofes en vez de en "ver todo lo que se mueve". Cosas del original que
-acá no están (por ahora): tráfico aéreo (OpenSky), barcos (AIS), satélites
-(CelesTrak), cámaras CCTV públicas (~800 en el mundo, ninguna en Mendoza),
-control por voz, y "street view" real (el original tampoco lo tiene
-literalmente — lo que da esa sensación ahí es el zoom libre sobre los 3D
-Tiles fotorrealistas + esas cámaras CCTV).
+View](https://github.com/bilawalsidhu/gods-eye-view) (que usa un globo 3D
+con CesiumJS) pero no es un fork completo, y tampoco usa Cesium: se probó
+esa vía (ver sección de abajo) y se volvió a un mapa 2D porque, sin
+configurar una cuenta de Cesium Ion, ni siquiera el mapa base de respaldo
+cargaba bien en producción — el mapa satelital 2D de toda la vida es gratis,
+simple, y se ve bien de entrada. Cosas del original que acá no están:
+tráfico aéreo (OpenSky), barcos (AIS), satélites (CelesTrak), cámaras CCTV
+públicas (~800 en el mundo, ninguna en Mendoza), control por voz, globo 3D
+y "street view".
+
+### Por qué no Cesium/globo 3D (decisión tomada, 10/09/2026)
+
+Se probó una versión completa con CesiumJS (globo 3D que giraba hasta la
+ubicación detectada). Anduvo bien en las pruebas automatizadas, pero al
+deployarla de verdad, sin un token de Cesium Ion configurado, el mapa base
+de respaldo (tiles de OpenStreetMap) tampoco cargó en producción — el
+resultado fue un globo azul liso, sin calles, con los marcadores de sismos
+mostrados como manchas de glow gigantes sin ningún mapa debajo. Conseguir
+un token de Cesium Ion gratis es un paso extra que había que dar antes de
+que el mapa se viera bien, y el objetivo del proyecto es que funcione bien
+de entrada, sin configuración. Por eso se volvió al mapa 2D con Esri World
+Imagery + CARTO (el mismo que ya andaba bien en la primera versión), que no
+necesita ninguna cuenta para verse completo.
 
 ## Cómo ajustar la zona monitoreada (opcional)
 
