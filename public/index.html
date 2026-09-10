@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mendoza en Vivo — Sismos</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>🌎 Mendoza en Vivo — Sismos</h1>
+    <div class="controles">
+      <label>
+        Rango:
+        <select id="rango">
+          <option value="24h">Últimas 24 h</option>
+          <option value="7d">Últimos 7 días</option>
+          <option value="30d" selected>Últimos 30 días</option>
+        </select>
+      </label>
+      <label>
+        Magnitud mínima:
+        <select id="minmag">
+          <option value="1.5">1.5+</option>
+          <option value="2" selected>2.0+</option>
+          <option value="2.5">2.5+</option>
+          <option value="3">3.0+</option>
+          <option value="4">4.0+</option>
+        </select>
+      </label>
+      <span id="estado">cargando...</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div id="mapa"></div>
+    <div class="mapa-hud"></div>
+    <div class="mapa-borde-glow"></div>
+
+    <button id="boton-panel-movil" class="boton-panel-movil" type="button">
+      📡 Sismos <span class="contador" id="contador-movil">0</span>
+    </button>
+
+    <aside class="panel" id="panel-lateral">
+      <div id="banner-alerta" class="banner-alerta oculto"></div>
+
+      <section class="alerta-temprana">
+        <h2>🔔 Alerta temprana real</h2>
+        <p class="intro-alerta">
+          Este mapa muestra sismos <strong>ya ocurridos</strong> (con algunos minutos de demora).
+          Para un aviso de verdad, segundos antes de que llegue la sacudida fuerte, activá esto:
+        </p>
+
+        <div id="alerta-android" class="caja-alerta oculto">
+          <p>
+            <strong>Detectamos que estás en Android.</strong> Activá las Alertas de Sismos de Google:
+            usan los acelerómetros de los celulares como una red de sensores y ya avisaron a miles
+            de mendocinos antes de un sismo M6.0 en Chile.
+          </p>
+          <ol>
+            <li>Abrí <strong>Ajustes</strong></li>
+            <li>Buscá <strong>"Alertas de terremotos"</strong></li>
+            <li>Activala</li>
+          </ol>
+          <a class="boton-alerta" href="https://support.google.com/android/answer/12464968?hl=es" target="_blank" rel="noopener">
+            Ver instrucciones oficiales de Google →
+          </a>
+        </div>
+
+        <div id="alerta-ios" class="caja-alerta oculto">
+          <p>
+            <strong>Detectamos que estás en iPhone.</strong> Apple todavía no tiene un sistema nativo
+            de alerta sísmica temprana. Como complemento podés probar
+            <a href="https://apps.apple.com/app/id1467058529" target="_blank" rel="noopener">MyShake</a>
+            (Universidad de Berkeley) para reportar sismos sentidos y ver actividad cercana — pero su
+            alerta en tiempo real hoy está garantizada solo en algunas regiones (principalmente EE.UU.),
+            así que en Mendoza no la trates como un aviso confirmado, sí como algo complementario.
+          </p>
+        </div>
+
+        <div id="alerta-otro" class="caja-alerta oculto">
+          <p>
+            Si tenés Android, activá las
+            <a href="https://support.google.com/android/answer/12464968?hl=es" target="_blank" rel="noopener">Alertas de Sismos de Google</a>
+            (Ajustes → "Alertas de terremotos"). Ya funcionan en Mendoza.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Referencia</h2>
+        <ul class="leyenda">
+          <li><span class="punto" style="background:#2ecc71"></span> Menor a 3.0</li>
+          <li><span class="punto" style="background:#f1c40f"></span> 3.0 – 3.9</li>
+          <li><span class="punto" style="background:#e67e22"></span> 4.0 – 4.9</li>
+          <li><span class="punto" style="background:#e74c3c"></span> 5.0 o más</li>
+        </ul>
+        <p class="fuente-nota">
+          Fuentes: <a href="https://earthquake.usgs.gov/" target="_blank" rel="noopener">USGS</a>
+          y <a href="https://www.seismicportal.eu/" target="_blank" rel="noopener">EMSC/SeismicPortal</a>.
+          No es una fuente oficial argentina — para información oficial consultá
+          <a href="https://www.inpres.gob.ar/" target="_blank" rel="noopener">INPRES</a>.
+        </p>
+      </section>
+
+      <section id="lista-sismos">
+        <h2>Últimos sismos</h2>
+        <div id="lista"></div>
+      </section>
+
+      <section>
+        <h2>Defensa Civil recomienda</h2>
+        <details>
+          <summary>Antes</summary>
+          <ul>
+            <li>Identificá los lugares más seguros de tu casa (bajo mesas firmes, lejos de ventanas y muebles altos).</li>
+            <li>Tené a mano una mochila de emergencia (agua, linterna, radio, documentos, medicamentos).</li>
+            <li>Conocé las vías de salida de tu edificio o barrio.</li>
+          </ul>
+        </details>
+        <details>
+          <summary>Durante</summary>
+          <ul>
+            <li>Si estás adentro, agachate, cubrite y sujetate (Agacharse-Cubrirse-Sujetarse).</li>
+            <li>No uses ascensores.</li>
+            <li>Si estás afuera, alejate de edificios, postes y cables.</li>
+          </ul>
+        </details>
+        <details>
+          <summary>Después</summary>
+          <ul>
+            <li>Revisá si hay olor a gas o daños estructurales antes de reingresar.</li>
+            <li>Esperá réplicas, pueden ocurrir minutos u horas después.</li>
+            <li>Seguí las indicaciones oficiales de Defensa Civil Mendoza.</li>
+          </ul>
+        </details>
+      </section>
+    </aside>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
