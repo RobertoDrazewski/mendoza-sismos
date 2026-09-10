@@ -1,0 +1,14 @@
+{
+  "name": "Mendoza en Vivo — Sismos",
+  "short_name": "Mza Sismos",
+  "description": "Mapa de sismos en vivo para Mendoza y Cuyo, gratis y sin API keys.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#05080c",
+  "theme_color": "#05080c",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

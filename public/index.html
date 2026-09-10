@@ -4,6 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mendoza en Vivo — Sismos</title>
+  <meta name="theme-color" content="#05080c" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -29,6 +33,7 @@
           <option value="4">4.0+</option>
         </select>
       </label>
+      <span id="estado-vivo" class="estado-vivo reconectando"><span class="bolita"></span><span id="estado-vivo-texto">conectando</span></span>
       <span id="estado">cargando...</span>
     </div>
   </header>
@@ -46,17 +51,22 @@
       <div id="banner-alerta" class="banner-alerta oculto"></div>
 
       <section class="alerta-temprana">
-        <h2>🔔 Alerta temprana real</h2>
+        <h2>🔔 ¿Cuándo suena la alarma?</h2>
         <p class="intro-alerta">
-          Este mapa muestra sismos <strong>ya ocurridos</strong> (con algunos minutos de demora).
-          Para un aviso de verdad, segundos antes de que llegue la sacudida fuerte, activá esto:
+          Ni bien la red sismológica confirma un evento nuevo en la zona (EMSC en vivo por
+          websocket, o USGS como respaldo cada 60 s) — normalmente entre <strong>20 segundos y
+          2 minutos</strong> después de que empezó el sismo, nunca en el instante exacto. Para
+          zonas alejadas del epicentro a veces alcanza a avisar antes de que llegue la sacudida
+          fuerte (por eso viaja más rápido el aviso por internet que la onda sísmica); para un
+          sismo justo debajo de Mendoza, no.
         </p>
 
         <div id="alerta-android" class="caja-alerta oculto">
           <p>
-            <strong>Detectamos que estás en Android.</strong> Activá las Alertas de Sismos de Google:
-            usan los acelerómetros de los celulares como una red de sensores y ya avisaron a miles
-            de mendocinos antes de un sismo M6.0 en Chile.
+            <strong>Detectamos que estás en Android.</strong> Sumá también las Alertas de Sismos de
+            Google: usan los acelerómetros de millones de celulares como red de sensores y ya
+            avisaron a mendocinos antes de un sismo M6.0 en Chile — es más rápido que esta web para
+            sismos cercanos.
           </p>
           <ol>
             <li>Abrí <strong>Ajustes</strong></li>
@@ -70,12 +80,10 @@
 
         <div id="alerta-ios" class="caja-alerta oculto">
           <p>
-            <strong>Detectamos que estás en iPhone.</strong> Apple todavía no tiene un sistema nativo
-            de alerta sísmica temprana. Como complemento podés probar
-            <a href="https://apps.apple.com/app/id1467058529" target="_blank" rel="noopener">MyShake</a>
-            (Universidad de Berkeley) para reportar sismos sentidos y ver actividad cercana — pero su
-            alerta en tiempo real hoy está garantizada solo en algunas regiones (principalmente EE.UU.),
-            así que en Mendoza no la trates como un aviso confirmado, sí como algo complementario.
+            <strong>Detectamos que estás en iPhone.</strong> Apple no tiene un sistema nativo
+            equivalente. Instalá esta página en tu pantalla de inicio (compartir → "Agregar a
+            pantalla de inicio") para poder recibir notificaciones — es lo más parecido a una
+            alarma cross-platform que existe sin depender de Android.
           </p>
         </div>
 
@@ -87,6 +95,8 @@
           </p>
         </div>
       </section>
+
+      <div id="mas-cercano" class="mas-cercano oculto"></div>
 
       <section>
         <h2>Referencia</h2>
@@ -101,6 +111,7 @@
           y <a href="https://www.seismicportal.eu/" target="_blank" rel="noopener">EMSC/SeismicPortal</a>.
           No es una fuente oficial argentina — para información oficial consultá
           <a href="https://www.inpres.gob.ar/" target="_blank" rel="noopener">INPRES</a>.
+          Tocá el ícono 📍 del mapa para ver tu ubicación y la distancia a cada sismo.
         </p>
       </section>
 
@@ -110,33 +121,106 @@
       </section>
 
       <section>
-        <h2>Defensa Civil recomienda</h2>
+        <h2>🆘 Emergencias</h2>
+        <p class="intro-alerta">Números reales de Mendoza y tu ubicación lista para compartir.</p>
+        <button class="boton-ubicar" id="boton-abrir-sos" type="button">Abrir panel de emergencia →</button>
+      </section>
+
+      <section>
+        <h2>Qué hacer ante un sismo</h2>
         <details>
-          <summary>Antes</summary>
+          <summary>Antes (preparate ahora)</summary>
           <ul>
-            <li>Identificá los lugares más seguros de tu casa (bajo mesas firmes, lejos de ventanas y muebles altos).</li>
-            <li>Tené a mano una mochila de emergencia (agua, linterna, radio, documentos, medicamentos).</li>
-            <li>Conocé las vías de salida de tu edificio o barrio.</li>
+            <li>Identificá los lugares más seguros de tu casa: bajo mesas o escritorios firmes, contra una pared interior, lejos de ventanas, espejos y muebles altos que se puedan caer.</li>
+            <li>Asegurá con anclajes los muebles altos, estanterías y calefones/termotanques.</li>
+            <li>Armá una mochila de emergencia: agua, linterna, radio a pilas, documentos, medicamentos, silbato, copia de llaves.</li>
+            <li>Sabé dónde están las llaves de gas, luz y agua de tu casa, y cómo cortarlas.</li>
+            <li>Acordá con tu familia un punto de encuentro afuera y un contacto fuera de la zona para avisar que están bien.</li>
+            <li>Conocé las salidas de tu edificio o barrio, y dónde queda la escalera (nunca el ascensor).</li>
           </ul>
         </details>
         <details>
-          <summary>Durante</summary>
+          <summary>Durante (mientras tiembla)</summary>
           <ul>
-            <li>Si estás adentro, agachate, cubrite y sujetate (Agacharse-Cubrirse-Sujetarse).</li>
-            <li>No uses ascensores.</li>
-            <li>Si estás afuera, alejate de edificios, postes y cables.</li>
+            <li><strong>Agacharse, Cubrirse y Sujetarse:</strong> metete bajo una mesa firme, cubrite la cabeza y el cuello, y sujetate hasta que termine el movimiento.</li>
+            <li>Si estás adentro, <strong>quedate adentro</strong> — no corras hacia la puerta ni las escaleras mientras tiembla, la mayoría de las lesiones son por caída de objetos o al intentar moverse.</li>
+            <li>Alejate de ventanas, espejos y muebles que puedan caer o desplazarse.</li>
+            <li>No uses ascensores bajo ninguna circunstancia.</li>
+            <li>Si estás en la cama, quedate ahí y cubrite la cabeza con una almohada.</li>
+            <li>Si estás afuera, alejate de edificios, postes, cables y árboles; quedate en espacio abierto.</li>
+            <li>Si estás manejando, frená lejos de puentes, pasos a desnivel y cables, y quedate en el auto con el cinturón puesto.</li>
           </ul>
         </details>
         <details>
-          <summary>Después</summary>
+          <summary>Después (cuando terminó)</summary>
           <ul>
-            <li>Revisá si hay olor a gas o daños estructurales antes de reingresar.</li>
-            <li>Esperá réplicas, pueden ocurrir minutos u horas después.</li>
-            <li>Seguí las indicaciones oficiales de Defensa Civil Mendoza.</li>
+            <li>No corras: revisá primero si vos y quienes te rodean están bien antes de moverte.</li>
+            <li>Si tu edificio tiene daños visibles, evacuá con calma por las escaleras, nunca por ascensor.</li>
+            <li>Una vez afuera, alejate de la construcción y quedate en un espacio abierto.</li>
+            <li>Si sentís olor a gas: no enciendas fósforos, velas ni interruptores de luz — salí y llamá a Ecogas (ver panel de emergencia).</li>
+            <li>Esperá réplicas: pueden ocurrir minutos, horas o incluso días después, a veces con fuerza similar.</li>
+            <li>No reingreses a edificios dañados hasta que Defensa Civil confirme que es seguro.</li>
+            <li>Evitá llamar por teléfono salvo emergencia real, para no saturar las líneas — usá mensajes de texto o WhatsApp para avisar que estás bien.</li>
+            <li>Seguí las indicaciones oficiales de Defensa Civil Mendoza e INPRES, no rumores de redes sociales.</li>
           </ul>
         </details>
       </section>
     </aside>
+  </div>
+
+  <div class="fondo-sos oculto" id="fondo-sos">
+    <div class="panel-sos">
+      <h2>🆘 Emergencia</h2>
+      <p class="subtitulo">
+        Números reales de Mendoza. Ante cualquier duda, el 911 deriva según corresponda —
+        es el más rápido y confiable.
+      </p>
+
+      <a class="llamada" href="tel:911">
+        <span class="num">911</span>
+        <span>
+          <span class="titulo">Policía / Bomberos / Ambulancia</span>
+          <span class="desc">Emergencias — número único, deriva según el caso</span>
+        </span>
+      </a>
+
+      <a class="llamada" href="tel:08009991600">
+        <span class="num">0800<br/>999<br/>1600</span>
+        <span>
+          <span class="titulo">Ecogas</span>
+          <span class="desc">Olor a gas o fuga — muy relevante después de un sismo</span>
+        </span>
+      </a>
+
+      <a class="llamada" href="tel:08003333672">
+        <span class="num">0800<br/>3<br/>333672</span>
+        <span>
+          <span class="titulo">EDEMSA</span>
+          <span class="desc">Emergencias eléctricas / cables caídos</span>
+        </span>
+      </a>
+
+      <p class="info-nota">
+        Defensa Civil Mendoza también recibe reportes no urgentes — buscá la línea vigente en su
+        <a href="https://www.facebook.com/defensacivilmendoza" target="_blank" rel="noopener">página oficial</a>,
+        porque los números de contacto cambian con el tiempo y no queremos darte uno viejo.
+        Para una emergencia real, siempre 911.
+      </p>
+
+      <hr class="separador" />
+
+      <button class="boton-compartir-ubicacion" id="boton-compartir-ubicacion" type="button">
+        📍 Compartir mi ubicación ahora
+      </button>
+      <p class="info-nota">
+        Manda tu posición exacta por WhatsApp o el mensajero que elijas, con un link a Google Maps
+        y la hora. <strong>Esto no es un rastreador automático</strong> ni reemplaza a los equipos
+        de rescate: es un acceso directo para que tus contactos sepan dónde estabas parado/a por
+        última vez, con un solo toque, antes de que se corte la señal.
+      </p>
+
+      <button class="boton-cerrar-sos" id="boton-cerrar-sos" type="button">Cerrar</button>
+    </div>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>

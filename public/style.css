@@ -2,10 +2,10 @@
 
 :root {
   --bg: #05080c;
-  --panel: rgba(10, 18, 26, 0.88);
+  --panel: rgba(8, 15, 22, 0.97);
   --panel-borde: rgba(0, 229, 255, 0.28);
-  --texto: #e8f6fa;
-  --texto-tenue: #7f97a3;
+  --texto: #f2f9fc;
+  --texto-tenue: #9db2bd;
   --borde: #16323d;
   --cian: #00e5ff;
   --cian-suave: #22d3ee;
@@ -26,6 +26,13 @@ html, body {
   overflow: hidden;
 }
 
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+}
+
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(0, 229, 255, 0.25); border-radius: 4px; }
@@ -36,6 +43,7 @@ html, body {
 .topbar {
   position: relative;
   z-index: 500;
+  flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -60,11 +68,13 @@ html, body {
 
 .controles {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
+  gap: 8px 14px;
   font-size: 0.82rem;
   color: var(--texto-tenue);
   font-weight: 600;
+  min-width: 0;
 }
 
 .controles select {
@@ -95,8 +105,8 @@ html, body {
 .layout {
   position: relative;
   display: flex;
-  height: calc(100vh - 54px);
-  height: calc(100dvh - 54px);
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 #mapa {
@@ -111,32 +121,21 @@ html, body {
   filter: grayscale(0.5) brightness(0.42) contrast(1.35) saturate(0.85);
 }
 
-/* Capa de calles/etiquetas: se funde con blend "screen" y brilla en cian */
+/* Capa de calles/etiquetas: un halo cian suave, sin quemar el contraste */
 .capa-labels {
   filter:
-    drop-shadow(0 0 2px rgba(0, 229, 255, 0.9))
-    drop-shadow(0 0 6px rgba(0, 194, 224, 0.7))
-    brightness(1.25)
-    contrast(1.05);
-  mix-blend-mode: screen;
+    drop-shadow(0 0 1.5px rgba(0, 229, 255, 0.85))
+    drop-shadow(0 0 3px rgba(0, 194, 224, 0.45))
+    brightness(1.05);
 }
 
-/* Vignette + scanlines sutiles encima del mapa, puramente decorativo */
+/* Vignette sutil en los bordes, para que el foco quede en el centro */
 .mapa-hud {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 450;
-  background:
-    radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, 0.55) 100%),
-    repeating-linear-gradient(
-      0deg,
-      rgba(0, 229, 255, 0.03) 0px,
-      rgba(0, 229, 255, 0.03) 1px,
-      transparent 1px,
-      transparent 3px
-    );
-  mix-blend-mode: overlay;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.45) 100%);
 }
 
 .mapa-borde-glow {
@@ -144,7 +143,7 @@ html, body {
   inset: 0;
   pointer-events: none;
   z-index: 451;
-  box-shadow: inset 0 0 60px rgba(0, 229, 255, 0.12), inset 0 0 4px rgba(0, 229, 255, 0.35);
+  box-shadow: inset 0 0 40px rgba(0, 229, 255, 0.08), inset 0 0 3px rgba(0, 229, 255, 0.25);
 }
 
 .leaflet-container {
@@ -355,25 +354,269 @@ details ul {
   display: none;
 }
 
+/* ---------- Controles flotantes propios (estilo Leaflet control) ---------- */
+
+.control-mapa {
+  background: rgba(6, 20, 27, 0.92) !important;
+  border: 1px solid var(--panel-borde) !important;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+  cursor: pointer;
+  color: var(--cian-suave);
+  text-decoration: none;
+}
+
+.control-mapa:hover {
+  background: rgba(0, 229, 255, 0.16) !important;
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.4);
+}
+
+.control-sos {
+  background: rgba(40, 8, 8, 0.92) !important;
+  border-color: rgba(231, 76, 60, 0.55) !important;
+  color: #ffb3ab;
+  font-weight: 700;
+}
+
+.control-sos:hover {
+  background: rgba(231, 76, 60, 0.28) !important;
+  box-shadow: 0 0 12px rgba(231, 76, 60, 0.55);
+}
+
+.control-mapa.activo {
+  background: rgba(0, 229, 255, 0.25) !important;
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+}
+
+/* Punto de "tu posicion" en el mapa */
+.marcador-ubicacion {
+  filter: drop-shadow(0 0 6px #00e5ff) drop-shadow(0 0 12px rgba(0, 229, 255, 0.8));
+  animation: pulso-ubicacion 2s ease-in-out infinite;
+}
+
+@keyframes pulso-ubicacion {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* Indicador de estado del canal en vivo (websocket EMSC) */
+.estado-vivo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.estado-vivo .bolita {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #556;
+  display: inline-block;
+}
+
+.estado-vivo.conectado .bolita {
+  background: #2ecc71;
+  box-shadow: 0 0 6px #2ecc71;
+  animation: pulso-vivo 1.4s ease-in-out infinite;
+}
+
+.estado-vivo.conectado { color: #7fe3a8; }
+
+.estado-vivo.reconectando .bolita { background: var(--amarillo); }
+.estado-vivo.reconectando { color: var(--amarillo); }
+
+@keyframes pulso-vivo {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.5); opacity: 0.6; }
+}
+
+/* Distancia a la ubicacion del usuario, en items de la lista y popups */
+.distancia {
+  color: var(--cian-suave);
+  font-weight: 600;
+}
+
+.mas-cercano {
+  background: rgba(0, 229, 255, 0.08);
+  border: 1px solid var(--panel-borde);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  margin-bottom: 10px;
+}
+
+.mas-cercano.oculto { display: none; }
+.mas-cercano strong { color: var(--cian-suave); }
+
+.boton-ubicar {
+  display: inline-block;
+  background: rgba(0, 229, 255, 0.14);
+  border: 1px solid var(--cian);
+  color: var(--cian-suave);
+  font-weight: 700;
+  font-size: 0.78rem;
+  padding: 7px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.boton-ubicar:hover { background: rgba(0, 229, 255, 0.24); }
+
+/* ---------- Panel de emergencias (modal flotante) ---------- */
+
+.fondo-sos {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 4, 6, 0.72);
+  backdrop-filter: blur(3px);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.fondo-sos.oculto { display: none; }
+
+.panel-sos {
+  width: 100%;
+  max-width: 380px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: #0a141b;
+  border: 1px solid var(--rojo);
+  border-radius: 12px;
+  box-shadow: 0 0 40px rgba(231, 76, 60, 0.35);
+  padding: 18px;
+}
+
+.panel-sos h2 {
+  font-family: 'Orbitron', sans-serif;
+  color: #ff9e91;
+  text-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
+  font-size: 1rem;
+  margin: 0 0 4px;
+  letter-spacing: 0.04em;
+}
+
+.panel-sos .subtitulo {
+  font-size: 0.78rem;
+  color: var(--texto-tenue);
+  margin: 0 0 14px;
+  line-height: 1.4;
+}
+
+.llamada {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  background: rgba(231, 76, 60, 0.12);
+  border: 1px solid rgba(231, 76, 60, 0.4);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  color: var(--texto);
+}
+
+.llamada:hover { background: rgba(231, 76, 60, 0.22); }
+
+.llamada .num {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: #ff9e91;
+  min-width: 74px;
+}
+
+.llamada .desc { font-size: 0.78rem; color: var(--texto-tenue); display: block; }
+.llamada .titulo { font-weight: 700; font-size: 0.88rem; }
+
+.panel-sos .separador {
+  border: none;
+  border-top: 1px solid var(--borde);
+  margin: 14px 0;
+}
+
+.panel-sos .info-nota {
+  font-size: 0.72rem;
+  color: var(--texto-tenue);
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
+.panel-sos .info-nota a { color: var(--cian-suave); }
+
+.boton-compartir-ubicacion {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--cian);
+  color: #04141a;
+  font-weight: 700;
+  border: none;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 0.88rem;
+  cursor: pointer;
+  box-shadow: 0 0 16px rgba(0, 229, 255, 0.4);
+}
+
+.boton-compartir-ubicacion:hover { background: #3ddcff; }
+
+.boton-cerrar-sos {
+  display: block;
+  margin: 14px auto 0;
+  background: transparent;
+  border: 1px solid var(--borde);
+  color: var(--texto-tenue);
+  padding: 6px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
 /* ---------- Responsive: celular ---------- */
 
 @media (max-width: 768px) {
   .topbar {
+    flex-direction: column;
+    align-items: stretch;
     padding: 8px 12px;
   }
 
   .topbar h1 { font-size: 0.82rem; }
 
   .controles {
-    gap: 8px;
+    width: 100%;
+    gap: 6px 10px;
     font-size: 0.72rem;
+    justify-content: flex-start;
   }
+
+  .controles label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 
   .controles select { padding: 3px 5px; font-size: 0.72rem; }
 
-  #estado { min-width: unset; font-size: 0.68rem; }
+  #estado {
+    min-width: unset;
+    font-size: 0.68rem;
+    text-align: left;
+    flex-basis: 100%;
+  }
 
-  .layout { height: calc(100vh - 46px); height: calc(100dvh - 46px); }
+  .estado-vivo { font-size: 0.64rem; }
 
   .boton-panel-movil {
     display: flex;
@@ -439,4 +682,6 @@ details ul {
   .panel.abierto { transform: translateY(0); }
 
   #mapa { height: 100%; }
+
+  .panel-sos { max-width: 100%; }
 }
