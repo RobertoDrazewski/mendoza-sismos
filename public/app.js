@@ -17,7 +17,8 @@ const REFRESCO_SISMOS_MS = 60 * 1000;
 const REFRESCO_OTRAS_MS = 5 * 60 * 1000; // incendios/catastrofes cambian mas lento
 const EMSC_WS_URL = 'wss://www.seismicportal.eu/standing_order/websocket';
 const MENDOZA = { lat: -32.8908, lon: -68.8272 };
-const UMBRAL_EVACUACION_KM = 300; // no sugerir "alejate" de algo que esta a medio mundo
+const UMBRAL_EVACUACION_KM = 150; // no sugerir "alejate" de algo que esta a medio mundo
+const MAGNITUD_MIN_EVACUACION = 4.0; // un sismo M2.5-3.9 casi nunca se siente: no amerita "sugerencia de evacuacion"
 
 const mapa = L.map('mapa', { zoomControl: false, worldCopyJump: true }).setView([10, 0], 2);
 L.control.zoom({ position: 'bottomleft' }).addTo(mapa);
@@ -458,6 +459,7 @@ async function cargarCatastrofes() {
 function reconstruirCombinadoYRenderPanel() {
   const deSismos = ultimosSismos.map((s) => ({
     tipo: 'sismo', icono: '🔴', titulo: `M${s.magnitud.toFixed(1)} — ${s.lugar}`, lat: s.lat, lon: s.lon, hora: s.hora,
+    magnitud: s.magnitud,
   }));
   const deIncendios = ultimosIncendios.map((f) => ({
     tipo: 'incendio', icono: '🔥',
@@ -526,6 +528,10 @@ function actualizarSugerenciaEvacuacion() {
   let masCercano = null;
   let minKm = Infinity;
   eventosCombinados.forEach((e) => {
+    // Un sismo chico (M2.5-3.9) casi nunca se siente y no amerita "alejate" —
+    // solo cuenta para esta sugerencia si es M4+ (incendios/catastrofes de
+    // GDACS ya vienen filtrados como significativos por la fuente).
+    if (e.tipo === 'sismo' && (e.magnitud || 0) < MAGNITUD_MIN_EVACUACION) return;
     const km = distanciaKm(miUbicacion.lat, miUbicacion.lon, e.lat, e.lon);
     if (km < minKm) {
       minKm = km;
@@ -556,6 +562,13 @@ function actualizarSugerenciaEvacuacion() {
     [[miUbicacion.lat, miUbicacion.lon], [destino.lat, destino.lon]],
     { className: 'linea-evacuacion', color: '#00e5ff', weight: 3, opacity: 0.85 }
   ).addTo(capaEvacuacion);
+  // Etiqueta permanente en la punta de la línea: para que se entienda en el
+  // mapa mismo qué es esa línea, sin tener que leer el panel lateral.
+  L.marker([destino.lat, destino.lon], { icon: iconoEmoji('🧭', 'icono-evacuacion'), interactive: false })
+    .bindTooltip('Sugerencia de evacuación (no oficial)', {
+      permanent: true, direction: 'top', className: 'tooltip-evacuacion',
+    })
+    .addTo(capaEvacuacion);
 }
 
 // ---------------------------------------------------------------------
@@ -599,13 +612,27 @@ function pedirUbicacion({ boton, centrar = true, esAutomatico = false, zoom = 9 
     (err) => {
       if (boton) boton.classList.remove('activo');
       if (!esAutomatico) {
-        alert('No pudimos obtener tu ubicación: ' + err.message);
+        alert(mensajeErrorUbicacion(err));
       } else {
         console.warn('No se pudo detectar la ubicación automáticamente', err.message);
       }
     },
-    { enableHighAccuracy: true, timeout: 10000 }
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 }
   );
+}
+
+// Mensaje de error mas util que el generico del navegador: el motivo mas
+// comun de "timeout" en desktop es que el sistema operativo tiene apagado
+// el permiso de ubicacion para el navegador (no algo que la app pueda
+// arreglar), asi que se lo decimos directo en vez de solo repetir el error.
+function mensajeErrorUbicacion(err) {
+  if (err.code === err.PERMISSION_DENIED) {
+    return 'No pudimos obtener tu ubicación: le negaste el permiso al navegador. Para reactivarlo, revisá los permisos de ubicación del sitio (ícono de candado en la barra de direcciones).';
+  }
+  if (err.code === err.TIMEOUT) {
+    return 'No pudimos obtener tu ubicación a tiempo. En computadoras esto suele pasar porque el sistema operativo tiene apagado el permiso de ubicación para el navegador (en Mac: Preferencias del Sistema → Privacidad y seguridad → Localización → activar para tu navegador). Probá de nuevo, o desde el celular donde el GPS suele responder más rápido.';
+  }
+  return 'No pudimos obtener tu ubicación: ' + err.message;
 }
 
 const ControlUbicacion = L.Control.extend({
@@ -700,8 +727,8 @@ document.getElementById('boton-compartir-ubicacion').addEventListener('click', (
       }
       window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
     },
-    (err) => alert('No pudimos obtener tu ubicación: ' + err.message),
-    { enableHighAccuracy: true, timeout: 12000 }
+    (err) => alert(mensajeErrorUbicacion(err)),
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 }
   );
 });
 

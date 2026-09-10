@@ -229,6 +229,22 @@ body {
   filter: drop-shadow(0 0 5px rgba(0, 229, 255, 0.85)) drop-shadow(0 0 10px rgba(0, 229, 255, 0.5));
 }
 
+.icono-evacuacion {
+  filter: drop-shadow(0 0 5px rgba(0, 229, 255, 0.85)) drop-shadow(0 0 10px rgba(0, 229, 255, 0.5));
+}
+
+.tooltip-evacuacion {
+  background: rgba(6, 20, 27, 0.85);
+  border: 1px solid rgba(0, 229, 255, 0.6);
+  color: var(--cian-suave, #6fe8ff);
+  font-size: 0.72rem;
+  padding: 3px 7px;
+  border-radius: 6px;
+  box-shadow: none;
+  white-space: nowrap;
+}
+.tooltip-evacuacion::before { display: none; }
+
 /* ---------- Panel lateral (desktop) ---------- */
 
 .panel {
