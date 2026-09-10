@@ -1,40 +1,41 @@
-# Mendoza en Vivo — Sismos
+# Ojo Global — Alertas de Catástrofes
 
-Mapa en vivo de sismos en Mendoza y la región de Cuyo (Mendoza, San Juan,
-San Luis y el límite con Chile), gratis, sin necesidad de ninguna API key.
-Estética "dark híbrido" (satélite oscurecido + calles con glow cian),
-pensado para verse bien en escritorio y en el celular.
+Globo 3D en vivo con alertas de catástrofes naturales **donde sea que estés**:
+sismos, incendios activos y otras catástrofes (tsunamis, ciclones, inundaciones,
+volcanes). Gratis, pensado para que cualquiera lo pueda levantar sin depender
+de una cuenta paga. Nació como un proyecto solo para Mendoza — ahora que la
+app detecta tu ubicación, el alcance es global, pero el espíritu sigue siendo
+el mismo: alertar rápido y ser honesto sobre qué es y qué no es cada cosa.
 
-Combina dos fuentes públicas:
+Al abrir la app, el globo **gira hasta detectar tu ubicación** (geolocalización
+del navegador) y hace zoom ahí. Si no se puede detectar, muestra Mendoza —
+el origen de este proyecto — como respaldo.
 
-- **USGS** (Estados Unidos) — cobertura global, respaldo por sondeo cada 60s.
-- **EMSC / SeismicPortal** (Europa) — además del sondeo, se conecta por
-  **websocket en tiempo casi real**, así un sismo nuevo puede aparecer en
-  segundos en vez de esperar al próximo sondeo. Si el websocket se cae, la
-  app sigue funcionando igual con el sondeo de 60s (mirá el indicador
-  "● en vivo / reconectando" en la barra superior).
+Combina varias fuentes públicas y gratuitas:
 
-El servidor fusiona las dos fuentes y elimina duplicados cuando ambas
-reportan el mismo sismo.
+- **Sismos** — USGS (Estados Unidos, sondeo cada 60 s) + EMSC/SeismicPortal
+  (Europa, sondeo + **websocket en tiempo casi real**). El servidor fusiona
+  las dos y elimina duplicados.
+- **Incendios activos** — NASA FIRMS (detecciones satelitales VIIRS, últimas
+  24 h, resolución ~375 m). Necesita una API key **gratuita** propia (ver
+  abajo cómo conseguirla) — sin ella, la app funciona igual, solo que sin
+  esta capa.
+- **Otras catástrofes** (tsunamis, ciclones, inundaciones, volcanes) — GDACS
+  (Global Disaster Alert and Coordination System). No necesita ninguna key.
 
-> **Nota:** esto NO es una fuente oficial argentina, y **no predice sismos**.
-> Avisa apenas la red sismológica confirma un evento — normalmente entre 20
-> segundos y 2 minutos después de que empezó, nunca en el instante exacto.
-> INPRES (el organismo nacional) no publica una API pública, así que no está
-> incluido acá. Para información oficial, siempre consultá
+> **Nota:** esto NO es una fuente oficial de ningún país, y **no predice
+> nada**. Avisa apenas cada fuente CONFIRMA un evento — para sismos,
+> normalmente entre 20 segundos y 2 minutos después de que empezó, nunca en
+> el instante exacto; para incendios y GDACS, cada pocos minutos. Para
+> información oficial en Argentina consultá
 > [inpres.gob.ar](https://www.inpres.gob.ar/). Para una alarma que sí avisa
 > segundos antes de la sacudida en Android, activá las
-> [Alertas de Sismos de Google](https://support.google.com/android/answer/12464968?hl=es)
-> (la propia app te lo sugiere si te detecta en Android).
+> [Alertas de Sismos de Google](https://support.google.com/android/answer/12464968?hl=es).
 
 ## Requisitos
 
 - [Node.js](https://nodejs.org/) versión 18 o superior (usa el `fetch`
-  incorporado de Node). Comprobá tu versión con:
-
-  ```bash
-  node -v
-  ```
+  incorporado de Node). Comprobá tu versión con `node -v`.
 
 ## Cómo correrlo
 
@@ -45,53 +46,98 @@ npm start
 ```
 
 Después abrí [http://localhost:3000](http://localhost:3000) en el navegador.
+Si el puerto 3000 ya lo estás usando para otra cosa, corré `PORT=4000 npm start`.
 
-Si el puerto 3000 ya lo estás usando para otra cosa, corré:
-
-```bash
-PORT=4000 npm start
-```
+**Así, sin configurar nada, ya funciona:** vas a ver el globo 3D (con
+imágenes libres de OpenStreetMap), sismos en vivo, y la capa de "otras
+catástrofes" (GDACS). Lo único que no vas a ver sin configurarlo es la capa
+de incendios y el terreno/imágenes fotorrealistas de Cesium — ver abajo.
 
 Podés instalarla como app (PWA): en el navegador, "Agregar a pantalla de
 inicio" (iPhone) o el ícono de instalar de Chrome (Android/desktop). Sirve
 sobre todo en iPhone, donde no hay alerta nativa de sismos.
 
+## Variables de entorno opcionales (las dos son gratis)
+
+Ninguna es obligatoria — la app arranca y funciona sin ellas, con las
+limitaciones que se explican abajo. Se configuran como variables de entorno,
+nunca como texto pegado en el código.
+
+### `CESIUM_ION_TOKEN` — globo fotorrealista
+
+Sin esta variable, el globo se ve en 3D real (podés rotarlo, inclinarlo,
+hacer zoom) pero con imágenes libres de OpenStreetMap y sin terreno/edificios
+fotorrealistas. Con un token de [Cesium Ion](https://ion.cesium.com/) (cuenta
+gratuita, plan "Community" para uso personal/no comercial), la app carga
+además terreno real y los **3D Tiles fotorrealistas de Google** — el mismo
+efecto que usa el proyecto original [God's Eye
+View](https://github.com/bilawalsidhu/gods-eye-view) para poder "bajar" a
+nivel calle en 3D.
+
+Cómo conseguirlo: creá una cuenta gratis en [ion.cesium.com](https://ion.cesium.com/),
+andá a "Access Tokens" y copiá el token por defecto (o creá uno nuevo).
+Después:
+
+```bash
+CESIUM_ION_TOKEN=tu_token_aca npm start
+```
+
+### `FIRMS_API_KEY` — capa de incendios activos
+
+Sin esta variable, la capa de incendios queda vacía (la app te avisa con un
+cartel, no falla ni rompe nada). Con una key gratuita de [NASA
+FIRMS](https://firms.modaps.eosdis.nasa.gov/api/map_key/) (registro
+gratuito, un email), se activa la capa de incendios detectados por satélite
+en las últimas 24 h en todo el mundo.
+
+```bash
+FIRMS_API_KEY=tu_key_aca npm start
+```
+
+Podés combinar las dos:
+
+```bash
+CESIUM_ION_TOKEN=... FIRMS_API_KEY=... npm start
+```
+
 ## Qué vas a ver
 
-- Mapa satelital oscurecido con calles/nombres en glow cian, círculos de
-  colores por magnitud (verde < 3.0, amarillo 3-4, naranja 4-5, rojo 5+),
-  con su propio glow y un pulso cuando un sismo es nuevo.
-- Indicador "● en vivo / reconectando" que muestra honestamente si el canal
-  rápido (websocket) está conectado o si la app está corriendo solo con el
-  sondeo de respaldo.
-- Botón **📍 Mi ubicación** (arriba a la derecha del mapa): pide permiso de
-  geolocalización, te marca en el mapa y le suma a cada sismo (en la lista y
-  en el popup) la distancia real en km hasta tu posición, más un resumen del
-  sismo más cercano a vos.
-- Botón **🆘 Emergencias**: números reales de Mendoza con un toque —
-  911 (policía/bomberos/ambulancia), Ecogas (fuga de gas) y EDEMSA
-  (emergencia eléctrica) — y un botón para **compartir tu ubicación actual**
-  por WhatsApp/lo que elijas con un link a Google Maps y la hora. Esto
-  **no es un rastreador automático** ni un reemplazo de los equipos de
-  rescate: es un atajo de un toque para que tus contactos sepan dónde
-  estabas parado/a por última vez.
-- Panel con recomendaciones ampliadas de qué hacer antes, durante y después
-  de un sismo (agacharse-cubrirse-sujetarse, no usar ascensor, qué hacer si
-  hay olor a gas, réplicas, etc.).
-- Selector de rango de tiempo (24 h / 7 días / 30 días) y de magnitud
-  mínima a mostrar.
-- Un aviso sonoro y visual cuando aparece un sismo nuevo.
-- Bandeja deslizable en mobile: el mapa ocupa toda la pantalla y el panel
-  se abre tocando el botón flotante "📡 Sismos".
+- **Globo 3D** que gira solo hasta detectar tu ubicación y hace zoom ahí,
+  con iluminación día/noche real y un look "dark híbrido" con glow cian.
+- **Sismos** con el mismo esquema de colores de siempre (verde < 3.0, amarillo
+  3-4, naranja 4-5, rojo 5+), con su propio glow, más rápido con el websocket
+  de EMSC.
+- **Incendios activos** 🔥 (si configuraste `FIRMS_API_KEY`) y **otras
+  catástrofes** 🌊🌀🌋 de GDACS, cada una con checkbox propio para
+  mostrar/ocultar la capa.
+- Indicador **"● en vivo / reconectando"** honesto sobre el estado del canal
+  rápido (websocket).
+- Botón **📍 Mi ubicación**: geolocalización, marcador en el globo, y una
+  sección de "**sugerencia de evacuación**" — ver aclaración importante abajo.
+- Botón **🆘 Emergencias**: números reales de Argentina (911, Ecogas, EDEMSA)
+  con una nota clara para quien esté fuera de Argentina, y un botón para
+  **compartir tu ubicación actual** por WhatsApp — **no es un rastreador
+  automático** (ver por qué, más abajo).
+- Protocolos de qué hacer ante sismo, incendio cercano y alerta de tsunami.
+- Selector de rango de tiempo (24 h / 7 días / 30 días) y magnitud mínima
+  para sismos.
+- Aviso sonoro y visual cuando aparece un sismo nuevo.
+- Bandeja deslizable en mobile.
 
-## Sobre los números de emergencia
+## Sobre la "sugerencia de evacuación" — qué es y qué NO es
 
-Son los que encontré vigentes y con fuente reciente al armar esto (911,
-Ecogas 0800-999-1600, EDEMSA 0800-3-333672). A propósito **no** incluí un
-número directo de Defensa Civil Mendoza: la única fuente que encontré es de
-2016 y no quise arriesgarme a dejar un número viejo en algo tan sensible —
-el panel linkea a su página oficial en su lugar. Si conseguís el número
-vigente, agregalo en `public/index.html` dentro del `#fondo-sos`.
+**No existe ningún dataset público y oficial de rutas de evacuación**, ni
+para Mendoza ni para el resto del mundo. Por eso, lo que muestra la app
+cuando hay un evento cerca de tu ubicación es una **heurística simple**: la
+dirección opuesta al evento más cercano (por ejemplo, "alejate hacia el
+noreste"), calculada con geometría básica, nada más.
+
+Esto **no es una ruta de evacuación oficial**, no sabe dónde hay edificios,
+cortes de calle, zonas seguras reales ni puntos de encuentro — es una
+orientación general para no quedarte parado/a pensando hacia dónde ir.
+Seguí siempre las indicaciones de Defensa Civil o la autoridad de tu zona
+cuando estén disponibles. La app lo aclara en la propia UI cada vez que
+aparece.
 
 ## Sobre "compartir mi ubicación" — qué es y qué NO es
 
@@ -100,45 +146,69 @@ Google Maps para que lo mandes vos mismo/a por WhatsApp o el mensajero que
 uses. Es manual, con un solo toque, y no requiere backend.
 
 Deliberadamente **no** implementé un "rastreador automático en segundo
-plano" que reporte posición sola en caso de derrumbe. No es un capricho:
-en iPhone (Safari) la geolocalización en segundo plano de una página web
-está muy restringida —deja de funcionar apenas se cierra o bloquea la
-pantalla—, así que un sistema así daría una falsa sensación de seguridad.
-Tampoco hay forma de que esto llegue a un rescatista real sin integrarse
-con un servicio de emergencias de verdad, cosa que este proyecto no tiene.
-Si en algún momento se quiere ir en esa dirección en serio, hace falta:
-una app nativa (no una web) con permisos de ubicación en segundo plano,
-un backend que guarde los últimos reportes, y sobre todo un acuerdo con
-Defensa Civil o el sistema de emergencias para que esos datos realmente
-lleguen a quien busca. Mientras tanto, el botón de compartir manual es lo
-honesto: rápido, útil, sin prometer de más.
+plano". En iPhone (Safari) la geolocalización en segundo plano de una
+página web está muy restringida —deja de funcionar apenas se cierra o
+bloquea la pantalla—, así que un sistema así daría una falsa sensación de
+seguridad. Tampoco hay forma de que esto llegue a un rescatista real sin
+integrarse con un servicio de emergencias de verdad. Mientras tanto, el
+botón de compartir manual es lo honesto: rápido, útil, sin prometer de más.
 
-## Cómo ajustar la zona monitoreada
+## Sobre los números de emergencia
 
-En `server.js`, al principio del archivo, está el objeto `BBOX` con los
-límites de latitud/longitud. Podés agrandar o achicar la región editando
-esos cuatro números (el frontend usa el mismo bbox que te devuelve la API
-para filtrar los eventos del websocket, así que no hace falta tocar nada
-en `app.js`).
+Son los que encontré vigentes y con fuente reciente para Argentina (911,
+Ecogas 0800-999-1600, EDEMSA 0800-3-333672). A propósito **no** incluí un
+número directo de Defensa Civil Mendoza: la única fuente que encontré es de
+2016 — el panel linkea a su página oficial en su lugar. Si estás fuera de
+Argentina, el panel te lo aclara: marcá el número de emergencias de tu país
+(112 en la Unión Europea y gran parte del mundo, 911 en gran parte de
+América, 000 en Australia, etc.).
+
+## Qué tiene el proyecto original (God's Eye View) que esto NO tiene
+
+Este proyecto se inspira en [God's Eye
+View](https://github.com/bilawalsidhu/gods-eye-view) pero no es un fork
+completo — reusa la idea del globo 3D y algunas fuentes, enfocado en
+catástrofes en vez de en "ver todo lo que se mueve". Cosas del original que
+acá no están (por ahora): tráfico aéreo (OpenSky), barcos (AIS), satélites
+(CelesTrak), cámaras CCTV públicas (~800 en el mundo, ninguna en Mendoza),
+control por voz, y "street view" real (el original tampoco lo tiene
+literalmente — lo que da esa sensación ahí es el zoom libre sobre los 3D
+Tiles fotorrealistas + esas cámaras CCTV).
+
+## Cómo ajustar la zona monitoreada (opcional)
+
+Por defecto, `/api/sismos` es global. Si querés acotar la vista a una
+región (por ejemplo, volver a una versión "solo Cuyo"), podés pedirle al
+endpoint un bbox por query string: `/api/sismos?minlat=-37&maxlat=-30&minlon=-71&maxlon=-64`.
+El frontend usa el bbox que le devuelve el backend para filtrar los eventos
+del websocket, así que no hace falta tocar `app.js`.
 
 ## Ideas para seguir (no incluidas todavía)
 
-- Agregar la capa histórica del IGN (sismos INPRES 2013-2021) como fondo
-  de referencia — es un dataset congelado, no en vivo, pero sirve para
-  mostrar la sismicidad histórica de la provincia.
-- Escribirle a INPRES o a Defensa Civil de Mendoza para conseguir un
-  acceso a datos más finos (magnitudes menores a 2.5) y un número de
-  contacto vigente para el panel de emergencias.
 - Notificaciones push reales (Web Push) para avisar aunque la pestaña esté
   cerrada — hoy la PWA instala pero las notificaciones solo llegan con la
   página abierta o en segundo plano reciente.
-- Integrarlo al globo 3D de God's Eye View (Cesium) si en algún momento
-  querés sumar también vuelos (OpenSky) e incendios (NASA FIRMS) — este
-  proyecto quedó como una versión chica y enfocada solo en sismos, para
-  probar rápido.
+- Capa de tráfico aéreo (OpenSky) y satélites (CelesTrak), como en el
+  proyecto original, si en algún momento se quiere sumar más contexto.
+- Una fuente específica de alertas de tsunami más fina que GDACS (por
+  ejemplo, feeds regionales de NOAA/tsunami.gov) si GDACS se queda corto en
+  cobertura o latencia para algún océano en particular.
+- Escribirle a INPRES o a Defensa Civil de Mendoza para conseguir acceso a
+  datos sísmicos más finos (magnitudes menores a 2.5) y un número de
+  contacto vigente para el panel de emergencias.
+
+## Aviso honesto sobre las integraciones nuevas
+
+La capa de incendios (FIRMS) y la de otras catástrofes (GDACS) se
+escribieron siguiendo la documentación pública de cada API, pero no se
+pudieron probar contra una respuesta real de esos servidores durante el
+desarrollo (el entorno donde se armó esto tiene la red restringida). Si al
+correrlo con tu propia key ves que algo no carga bien, es más probable que
+sea un detalle del formato de respuesta que no coincidió exactamente que un
+error de lógica — avisame y lo ajustamos.
 
 ## Licencia
 
 MIT. Los datos de USGS son de dominio público; los de EMSC se distribuyen
-bajo licencia Creative Commons Attribution 4.0 — si compartís capturas o
-datos públicamente, mencioná la fuente.
+bajo licencia Creative Commons Attribution 4.0; NASA FIRMS y GDACS piden
+atribución. Si compartís capturas o datos públicamente, mencioná la fuente.

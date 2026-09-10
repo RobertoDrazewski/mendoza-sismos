@@ -3,49 +3,61 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Mendoza en Vivo — Sismos</title>
+  <title>Ojo Global — Alertas de Catástrofes</title>
   <meta name="theme-color" content="#05080c" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon-192.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <link rel="stylesheet" href="https://unpkg.com/cesium@1.120.0/Build/Cesium/Widgets/widgets.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header class="topbar">
-    <h1>🌎 Mendoza en Vivo — Sismos</h1>
+    <h1>🌎 Ojo Global — Catástrofes en vivo</h1>
     <div class="controles">
       <label>
-        Rango:
+        Rango (sismos):
         <select id="rango">
-          <option value="24h">Últimas 24 h</option>
+          <option value="24h" selected>Últimas 24 h</option>
           <option value="7d">Últimos 7 días</option>
-          <option value="30d" selected>Últimos 30 días</option>
+          <option value="30d">Últimos 30 días</option>
         </select>
       </label>
       <label>
         Magnitud mínima:
         <select id="minmag">
           <option value="1.5">1.5+</option>
-          <option value="2" selected>2.0+</option>
-          <option value="2.5">2.5+</option>
+          <option value="2">2.0+</option>
+          <option value="2.5" selected>2.5+</option>
           <option value="3">3.0+</option>
           <option value="4">4.0+</option>
         </select>
       </label>
+      <span class="capas-toggle">
+        <label><input type="checkbox" id="capa-sismos" checked disabled /> 🔴 Sismos</label>
+        <label><input type="checkbox" id="capa-incendios" checked /> 🔥 Incendios</label>
+        <label><input type="checkbox" id="capa-catastrofes" checked /> 🌊 Otras</label>
+      </span>
       <span id="estado-vivo" class="estado-vivo reconectando"><span class="bolita"></span><span id="estado-vivo-texto">conectando</span></span>
       <span id="estado">cargando...</span>
     </div>
   </header>
 
   <div class="layout">
-    <div id="mapa"></div>
-    <div class="mapa-hud"></div>
-    <div class="mapa-borde-glow"></div>
+    <div class="mapa-envoltorio">
+      <div id="cesiumContainer"></div>
+      <div class="mapa-hud"></div>
+      <div class="mapa-borde-glow"></div>
 
-    <button id="boton-panel-movil" class="boton-panel-movil" type="button">
-      📡 Sismos <span class="contador" id="contador-movil">0</span>
-    </button>
+      <div class="mapa-controles">
+        <button id="boton-ubicacion" class="control-mapa" type="button" title="Ver mi ubicación y girar el globo hacia ahí">📍</button>
+        <button id="boton-abrir-sos" class="control-mapa control-sos" type="button" title="Números de emergencia y compartir ubicación">🆘</button>
+      </div>
+
+      <button id="boton-panel-movil" class="boton-panel-movil" type="button">
+        📡 Alertas <span class="contador" id="contador-movil">0</span>
+      </button>
+    </div>
 
     <aside class="panel" id="panel-lateral">
       <div id="banner-alerta" class="banner-alerta oculto"></div>
@@ -53,12 +65,11 @@
       <section class="alerta-temprana">
         <h2>🔔 ¿Cuándo suena la alarma?</h2>
         <p class="intro-alerta">
-          Ni bien la red sismológica confirma un evento nuevo en la zona (EMSC en vivo por
+          Ni bien la red sismológica confirma un sismo nuevo donde sea que ocurra (EMSC en vivo por
           websocket, o USGS como respaldo cada 60 s) — normalmente entre <strong>20 segundos y
-          2 minutos</strong> después de que empezó el sismo, nunca en el instante exacto. Para
-          zonas alejadas del epicentro a veces alcanza a avisar antes de que llegue la sacudida
-          fuerte (por eso viaja más rápido el aviso por internet que la onda sísmica); para un
-          sismo justo debajo de Mendoza, no.
+          2 minutos</strong> después de que empezó, nunca en el instante exacto. Incendios y otras
+          catástrofes (GDACS) se revisan cada pocos minutos: son detecciones/alertas, no un aviso
+          instantáneo.
         </p>
 
         <div id="alerta-android" class="caja-alerta oculto">
@@ -66,7 +77,7 @@
             <strong>Detectamos que estás en Android.</strong> Sumá también las Alertas de Sismos de
             Google: usan los acelerómetros de millones de celulares como red de sensores y ya
             avisaron a mendocinos antes de un sismo M6.0 en Chile — es más rápido que esta web para
-            sismos cercanos.
+            sismos cercanos, y funciona en casi todo el mundo.
           </p>
           <ol>
             <li>Abrí <strong>Ajustes</strong></li>
@@ -91,45 +102,52 @@
           <p>
             Si tenés Android, activá las
             <a href="https://support.google.com/android/answer/12464968?hl=es" target="_blank" rel="noopener">Alertas de Sismos de Google</a>
-            (Ajustes → "Alertas de terremotos"). Ya funcionan en Mendoza.
+            (Ajustes → "Alertas de terremotos").
           </p>
         </div>
       </section>
 
       <div id="mas-cercano" class="mas-cercano oculto"></div>
+      <div id="sugerencia-evacuacion" class="sugerencia-evacuacion oculto"></div>
 
       <section>
         <h2>Referencia</h2>
         <ul class="leyenda">
-          <li><span class="punto" style="background:#2ecc71"></span> Menor a 3.0</li>
-          <li><span class="punto" style="background:#f1c40f"></span> 3.0 – 3.9</li>
-          <li><span class="punto" style="background:#e67e22"></span> 4.0 – 4.9</li>
-          <li><span class="punto" style="background:#e74c3c"></span> 5.0 o más</li>
+          <li><span class="punto" style="background:#2ecc71"></span> Sismo menor a 3.0</li>
+          <li><span class="punto" style="background:#f1c40f"></span> Sismo 3.0 – 3.9</li>
+          <li><span class="punto" style="background:#e67e22"></span> Sismo 4.0 – 4.9</li>
+          <li><span class="punto" style="background:#e74c3c"></span> Sismo 5.0 o más</li>
+          <li><span class="punto punto-emoji">🔥</span> Incendio activo (NASA FIRMS)</li>
+          <li><span class="punto punto-emoji">🌊🌀🌋</span> Tsunami / ciclón / volcán / inundación (GDACS)</li>
         </ul>
+        <p id="nota-incendios" class="fuente-nota">🔥 Incendios: cargando…</p>
+        <p id="nota-catastrofes" class="fuente-nota">🌊 Otras catástrofes: cargando…</p>
         <p class="fuente-nota">
-          Fuentes: <a href="https://earthquake.usgs.gov/" target="_blank" rel="noopener">USGS</a>
-          y <a href="https://www.seismicportal.eu/" target="_blank" rel="noopener">EMSC/SeismicPortal</a>.
-          No es una fuente oficial argentina — para información oficial consultá
+          Fuentes: <a href="https://earthquake.usgs.gov/" target="_blank" rel="noopener">USGS</a>,
+          <a href="https://www.seismicportal.eu/" target="_blank" rel="noopener">EMSC/SeismicPortal</a>,
+          <a href="https://firms.modaps.eosdis.nasa.gov/" target="_blank" rel="noopener">NASA FIRMS</a> y
+          <a href="https://www.gdacs.org/" target="_blank" rel="noopener">GDACS</a>.
+          No es una fuente oficial de ningún país — para información oficial en Argentina consultá
           <a href="https://www.inpres.gob.ar/" target="_blank" rel="noopener">INPRES</a>.
-          Tocá el ícono 📍 del mapa para ver tu ubicación y la distancia a cada sismo.
+          Tocá el ícono 📍 para ver tu ubicación y la distancia a cada evento.
         </p>
       </section>
 
       <section id="lista-sismos">
-        <h2>Últimos sismos</h2>
+        <h2>Últimos eventos</h2>
         <div id="lista"></div>
       </section>
 
       <section>
         <h2>🆘 Emergencias</h2>
-        <p class="intro-alerta">Números reales de Mendoza y tu ubicación lista para compartir.</p>
-        <button class="boton-ubicar" id="boton-abrir-sos" type="button">Abrir panel de emergencia →</button>
+        <p class="intro-alerta">Números reales de Argentina y tu ubicación lista para compartir.</p>
+        <button class="boton-ubicar" id="boton-abrir-sos-2" type="button">Abrir panel de emergencia →</button>
       </section>
 
       <section>
-        <h2>Qué hacer ante un sismo</h2>
+        <h2>Qué hacer ante cada catástrofe</h2>
         <details>
-          <summary>Antes (preparate ahora)</summary>
+          <summary>Sismo — antes (preparate ahora)</summary>
           <ul>
             <li>Identificá los lugares más seguros de tu casa: bajo mesas o escritorios firmes, contra una pared interior, lejos de ventanas, espejos y muebles altos que se puedan caer.</li>
             <li>Asegurá con anclajes los muebles altos, estanterías y calefones/termotanques.</li>
@@ -140,28 +158,44 @@
           </ul>
         </details>
         <details>
-          <summary>Durante (mientras tiembla)</summary>
+          <summary>Sismo — durante (mientras tiembla)</summary>
           <ul>
             <li><strong>Agacharse, Cubrirse y Sujetarse:</strong> metete bajo una mesa firme, cubrite la cabeza y el cuello, y sujetate hasta que termine el movimiento.</li>
             <li>Si estás adentro, <strong>quedate adentro</strong> — no corras hacia la puerta ni las escaleras mientras tiembla, la mayoría de las lesiones son por caída de objetos o al intentar moverse.</li>
             <li>Alejate de ventanas, espejos y muebles que puedan caer o desplazarse.</li>
             <li>No uses ascensores bajo ninguna circunstancia.</li>
-            <li>Si estás en la cama, quedate ahí y cubrite la cabeza con una almohada.</li>
             <li>Si estás afuera, alejate de edificios, postes, cables y árboles; quedate en espacio abierto.</li>
             <li>Si estás manejando, frená lejos de puentes, pasos a desnivel y cables, y quedate en el auto con el cinturón puesto.</li>
           </ul>
         </details>
         <details>
-          <summary>Después (cuando terminó)</summary>
+          <summary>Sismo — después (cuando terminó)</summary>
           <ul>
             <li>No corras: revisá primero si vos y quienes te rodean están bien antes de moverte.</li>
             <li>Si tu edificio tiene daños visibles, evacuá con calma por las escaleras, nunca por ascensor.</li>
-            <li>Una vez afuera, alejate de la construcción y quedate en un espacio abierto.</li>
             <li>Si sentís olor a gas: no enciendas fósforos, velas ni interruptores de luz — salí y llamá a Ecogas (ver panel de emergencia).</li>
             <li>Esperá réplicas: pueden ocurrir minutos, horas o incluso días después, a veces con fuerza similar.</li>
-            <li>No reingreses a edificios dañados hasta que Defensa Civil confirme que es seguro.</li>
-            <li>Evitá llamar por teléfono salvo emergencia real, para no saturar las líneas — usá mensajes de texto o WhatsApp para avisar que estás bien.</li>
-            <li>Seguí las indicaciones oficiales de Defensa Civil Mendoza e INPRES, no rumores de redes sociales.</li>
+            <li>No reingreses a edificios dañados hasta que la autoridad local confirme que es seguro.</li>
+            <li>Seguí las indicaciones oficiales de Defensa Civil o el organismo de emergencias de tu zona, no rumores de redes sociales.</li>
+          </ul>
+        </details>
+        <details>
+          <summary>Incendio cercano — qué hacer</summary>
+          <ul>
+            <li>Si ves humo o fuego acercándose, no esperes una orden oficial para prepararte: juntá documentos, medicamentos y a tu familia/mascotas.</li>
+            <li>Alejate en dirección contraria al humo y al viento, nunca cuesta arriba de un incendio (el fuego sube más rápido que baja).</li>
+            <li>Cerrá puertas y ventanas de tu casa si tenés que salir, para frenar corrientes de aire que alimenten el fuego.</li>
+            <li>No intentes apagar un foco grande con tus propios medios — priorizá salir a tiempo.</li>
+            <li>Seguí las rutas de evacuación que indique Bomberos o Defensa Civil, no atajos que no conocés.</li>
+          </ul>
+        </details>
+        <details>
+          <summary>Alerta de tsunami — qué hacer</summary>
+          <ul>
+            <li>Si sentís un sismo fuerte cerca de la costa, no esperes una alerta oficial: andá a terreno alto o alejate varios kilómetros tierra adentro de inmediato.</li>
+            <li>Un tsunami puede llegar en minutos después del sismo que lo genera — la alerta oficial a veces llega después.</li>
+            <li>Si el mar se retira de golpe de la costa de forma anormal, es una señal de alerta: alejate ya.</li>
+            <li>No vuelvas a la costa hasta que la autoridad confirme que pasó el peligro — puede haber varias olas, y la primera no siempre es la más grande.</li>
           </ul>
         </details>
       </section>
@@ -172,14 +206,16 @@
     <div class="panel-sos">
       <h2>🆘 Emergencia</h2>
       <p class="subtitulo">
-        Números reales de Mendoza. Ante cualquier duda, el 911 deriva según corresponda —
-        es el más rápido y confiable.
+        Números reales de Argentina. Ante cualquier duda, el 911 deriva según corresponda —
+        es el más rápido y confiable. Si estás fuera de Argentina, marcá el número de emergencias
+        de tu país (por ejemplo 112 en la Unión Europea y gran parte del mundo, 911 en gran parte
+        de América, 000 en Australia).
       </p>
 
       <a class="llamada" href="tel:911">
         <span class="num">911</span>
         <span>
-          <span class="titulo">Policía / Bomberos / Ambulancia</span>
+          <span class="titulo">Policía / Bomberos / Ambulancia (Argentina)</span>
           <span class="desc">Emergencias — número único, deriva según el caso</span>
         </span>
       </a>
@@ -187,7 +223,7 @@
       <a class="llamada" href="tel:08009991600">
         <span class="num">0800<br/>999<br/>1600</span>
         <span>
-          <span class="titulo">Ecogas</span>
+          <span class="titulo">Ecogas (Argentina)</span>
           <span class="desc">Olor a gas o fuga — muy relevante después de un sismo</span>
         </span>
       </a>
@@ -195,7 +231,7 @@
       <a class="llamada" href="tel:08003333672">
         <span class="num">0800<br/>3<br/>333672</span>
         <span>
-          <span class="titulo">EDEMSA</span>
+          <span class="titulo">EDEMSA (Mendoza, Argentina)</span>
           <span class="desc">Emergencias eléctricas / cables caídos</span>
         </span>
       </a>
@@ -204,7 +240,7 @@
         Defensa Civil Mendoza también recibe reportes no urgentes — buscá la línea vigente en su
         <a href="https://www.facebook.com/defensacivilmendoza" target="_blank" rel="noopener">página oficial</a>,
         porque los números de contacto cambian con el tiempo y no queremos darte uno viejo.
-        Para una emergencia real, siempre 911.
+        Para una emergencia real, siempre 911 (o el número local de tu país).
       </p>
 
       <hr class="separador" />
@@ -223,7 +259,8 @@
     </div>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="https://unpkg.com/cesium@1.120.0/Build/Cesium/Cesium.js"></script>
+  <script src="/config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

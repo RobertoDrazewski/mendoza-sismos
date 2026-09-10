@@ -1,7 +1,7 @@
 {
   "name": "mendoza-sismos",
   "version": "0.1.0",
-  "description": "Mapa de sismos en vivo para Mendoza y la region de Cuyo (USGS + EMSC), gratis y sin API keys.",
+  "description": "Ojo Global: globo 3D con alertas de catastrofes en vivo (sismos USGS+EMSC, incendios NASA FIRMS, tsunamis/ciclones/volcanes GDACS), gratis y sin API keys obligatorias. Nacido como proyecto para Mendoza.",
   "type": "commonjs",
   "main": "server.js",
   "engines": {

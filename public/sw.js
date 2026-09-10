@@ -25,8 +25,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Nunca cachear la API de sismos ni nada que no sea GET del mismo origen.
-  if (url.pathname.startsWith('/api/') || event.request.method !== 'GET') {
+  // Nunca cachear la API de sismos/incendios/catastrofes, ni /config.js
+  // (depende de variables de entorno del servidor), ni nada que no sea
+  // GET del mismo origen.
+  if (url.pathname.startsWith('/api/') || url.pathname === '/config.js' || event.request.method !== 'GET') {
     return;
   }
 
