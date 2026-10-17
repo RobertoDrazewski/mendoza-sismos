@@ -8,7 +8,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon-192.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -34,7 +34,7 @@
         </select>
       </label>
       <span class="capas-toggle">
-        <label><input type="checkbox" id="capa-sismos" checked disabled /> 🔴 Sismos</label>
+        <label><input type="checkbox" id="capa-sismos" checked /> 🔴 Sismos</label>
         <label><input type="checkbox" id="capa-incendios" checked /> 🔥 Incendios</label>
         <label><input type="checkbox" id="capa-catastrofes" checked /> 🌊 Otras</label>
       </span>
@@ -47,6 +47,10 @@
     <div class="mapa-envoltorio">
       <div id="mapa"></div>
       <div class="mapa-hud"></div><div class="mapa-status-chip"><span class="status-pulse"></span><span>MONITOREO EN VIVO</span><span class="chip-separator"></span><span id="mapa-eventos-count">CARGANDO EVENTOS</span></div><div class="mapa-coordinates">MENDOZA, ARGENTINA <span>·</span> 32°53′S 68°50′W</div><div class="mapa-legend"><span><i class="legend-dot quake"></i>Sismos</span><span><i class="legend-dot fire"></i>Incendios</span><span><i class="legend-dot other"></i>Otras alertas</span></div>
+      <div class="mapa-controles-flotantes">
+        <button id="boton-ubicar-mapa" class="control-mapa" type="button" title="Ver mi ubicación y la distancia a cada evento">📍</button>
+        <button id="boton-sos-mapa" class="control-mapa control-sos" type="button" title="Números de emergencia y compartir ubicación">🆘</button>
+      </div>
       <div class="mapa-borde-glow"></div>
 
       <button id="boton-panel-movil" class="boton-panel-movil" type="button">
@@ -254,7 +258,8 @@
     </div>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+  <script src="globo.js"></script>
   <script src="/config.js"></script>
   <script src="app.js"></script>
 </body>

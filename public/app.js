@@ -1,7 +1,7 @@
 // Ojo Global — Alertas de Catástrofes (frontend)
-// Mapa con Leaflet (satelital oscurecido + calles con glow cian — el mismo
-// diseño "dark híbrido" que ya funcionaba bien). Combina varias fuentes
-// publicas y gratuitas:
+// Mapa: globo 3D con imagenes satelitales reales (MapLibre GL, ver globo.js) —
+// al acercar el zoom se ve el mapa real, no una esfera decorativa.
+// Combina varias fuentes publicas y gratuitas:
 //   - Sismos:    /api/sismos (USGS + EMSC fusionados) + websocket EMSC en vivo
 //   - Incendios: /api/incendios (NASA FIRMS — necesita FIRMS_API_KEY, ver README)
 //   - Otras:     /api/catastrofes (GDACS: tsunamis, ciclones, inundaciones, volcanes)
@@ -19,33 +19,19 @@ const EMSC_WS_URL = 'wss://www.seismicportal.eu/standing_order/websocket';
 const MENDOZA = { lat: -32.8908, lon: -68.8272 };
 const UMBRAL_EVACUACION_KM = 150; // no sugerir "alejate" de algo que esta a medio mundo
 const MAGNITUD_MIN_EVACUACION = 4.0; // un sismo M2.5-3.9 casi nunca se siente: no amerita "sugerencia de evacuacion"
+const UMBRAL_ALERTA_KM = 500; // sonido/banner/notificacion solo para sismos nuevos dentro de este radio
 
-const mapa = L.map('mapa', { zoomControl: false, worldCopyJump: true }).setView([10, 0], 2);
-L.control.zoom({ position: 'bottomleft' }).addTo(mapa);
+// Punto de referencia para "cerca"/"lejos": tu ubicacion real si la diste,
+// si no Mendoza (la base de la app) — nunca "en todo el mundo a la vez".
+function referenciaDistancia() {
+  return miUbicacion || MENDOZA;
+}
 
-// Base "satelital oscura": imagenes reales de Esri World Imagery, oscurecidas
-// y desaturadas por CSS (ver .capa-satelite en style.css) para el look hibrido.
-L.tileLayer(
-  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-  {
-    maxZoom: 18,
-    className: 'capa-satelite',
-    attribution: 'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics',
-  }
-).addTo(mapa);
-
-// Calles/nombres de lugares por encima, en modo oscuro con un halo cian sutil
-// (CARTO dark_only_labels: fondo transparente, solo calles y etiquetas).
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
-  maxZoom: 18,
-  className: 'capa-labels',
-  attribution: '&copy; OpenStreetMap, &copy; CARTO',
-}).addTo(mapa);
-
-const capaSismos = L.layerGroup().addTo(mapa);
-const capaIncendios = L.layerGroup().addTo(mapa);
-const capaCatastrofes = L.layerGroup().addTo(mapa);
-let capaEvacuacion = L.layerGroup().addTo(mapa);
+// Mapa: globo 3D (ver globo.js), no mas tiles de Esri/CARTO. GlobeMap.init
+// recibe un callback que arma el HTML del popup cuando se toca un pin —
+// el contenido es el mismo que antes vivia en cada bindPopup() de Leaflet.
+const mapa = GlobeMap;
+mapa.init(document.getElementById('mapa'), { onPinClick: armarPopupPin });
 
 // ---------------------------------------------------------------------
 // Estado
@@ -60,8 +46,6 @@ let idsVistos = new Set();
 let primeraCargaCompleta = false;
 
 let miUbicacion = null;
-let marcadorUbicacion = null;
-let circuloPrecision = null;
 
 // ---------------------------------------------------------------------
 // Utilidades
@@ -74,13 +58,8 @@ function colorPorMagnitud(mag) {
   return '#2ecc71';
 }
 
-function clasePorMagnitud(mag) {
-  if (mag >= 5) return 'sismo-rojo';
-  if (mag >= 4) return 'sismo-naranja';
-  if (mag >= 3) return 'sismo-amarillo';
-  return 'sismo-verde';
-}
-
+// Radio del circulo en pixeles (circle-radius del layer de sismos). Clamp
+// para que un M1 no desaparezca y un M9 no tape el mapa.
 function radioPorMagnitud(mag) {
   return Math.max(5, mag * 4);
 }
@@ -171,13 +150,64 @@ function alertarSismoNuevo(sismo) {
   }
 }
 
-function iconoEmoji(emoji, claseExtra) {
-  return L.divIcon({
-    className: `icono-emoji ${claseExtra || ''}`,
-    html: `<span>${emoji}</span>`,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
+// Alertar (sonido + banner + notificacion) solo tiene sentido para sismos
+// que te podrian afectar a VOS — nunca para cualquier sismo en el mundo.
+// Entre los sismos nuevos de este ciclo, devuelve el mas cercano a tu
+// ubicacion (o a Mendoza si todavia no la diste) si esta dentro del radio
+// de alerta; si ninguno califica, no hay nada que avisar.
+function sismoNuevoMasCercano(lista) {
+  const ref = referenciaDistancia();
+  let mejor = null;
+  let mejorKm = Infinity;
+  lista.forEach((s) => {
+    const km = distanciaKm(ref.lat, ref.lon, s.lat, s.lon);
+    if (km <= UMBRAL_ALERTA_KM && km < mejorKm) {
+      mejorKm = km;
+      mejor = s;
+    }
   });
+  return mejor;
+}
+
+function estaCercaParaAlertar(lat, lon) {
+  const ref = referenciaDistancia();
+  return distanciaKm(ref.lat, ref.lon, lat, lon) <= UMBRAL_ALERTA_KM;
+}
+
+// Arma el HTML de cada tipo de popup — mismo contenido que antes tenian los
+// bindPopup() de Leaflet, ahora mostrado en el popup flotante del globo
+// (ver GlobeMap.onPinClick / .globo-popup en style.css).
+function armarPopupPin(tipo, raw) {
+  if (tipo === 'sismo') {
+    const s = raw;
+    return `
+      <strong>M${s.magnitud.toFixed(1)}</strong> — ${s.lugar}<br/>
+      ${formatearHora(s.hora)}<br/>
+      Profundidad: ${s.profundidad_km ? s.profundidad_km.toFixed(1) + ' km' : 'sin dato'}<br/>
+      ${miUbicacion ? textoDistancia(s.lat, s.lon) + '<br/>' : ''}
+      Fuente: ${s.fuentes.join(' + ')}<br/>
+      <a href="${s.url}" target="_blank" rel="noopener">Ver detalle</a>
+    `;
+  }
+  if (tipo === 'incendio') {
+    const f = raw;
+    return (
+      `<strong>Foco de incendio activo</strong>${f.frp ? ` — potencia ${Math.round(f.frp)} MW` : ''}<br/>` +
+      `${f.fecha || ''} ${f.hora_utc || ''} UTC<br/>${miUbicacion ? textoDistancia(f.lat, f.lon) : ''}`
+    );
+  }
+  if (tipo === 'catastrofe') {
+    const c = raw;
+    return (
+      `<strong>${c.tipo_nombre}</strong><br/>${c.titulo}<br/>${c.pais || ''}<br/>` +
+      `${formatearHora(c.hora)}<br/>${miUbicacion ? textoDistancia(c.lat, c.lon) + '<br/>' : ''}` +
+      `<a href="${c.url}" target="_blank" rel="noopener">Ver detalle</a>`
+    );
+  }
+  if (tipo === 'ubicacion') {
+    return 'Estás acá (aproximado)';
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------
@@ -185,30 +215,15 @@ function iconoEmoji(emoji, claseExtra) {
 // ---------------------------------------------------------------------
 
 function render() {
-  capaSismos.clearLayers();
-
   const ordenados = [...ultimosSismos].sort((a, b) => b.hora - a.hora);
 
-  ordenados.forEach((s) => {
-    const marcador = L.circleMarker([s.lat, s.lon], {
-      radius: radioPorMagnitud(s.magnitud),
-      color: colorPorMagnitud(s.magnitud),
-      fillColor: colorPorMagnitud(s.magnitud),
-      fillOpacity: 0.65,
-      weight: 1.5,
-      className: clasePorMagnitud(s.magnitud),
-    });
-
-    marcador.bindPopup(`
-      <strong>M${s.magnitud.toFixed(1)}</strong> — ${s.lugar}<br/>
-      ${formatearHora(s.hora)}<br/>
-      Profundidad: ${s.profundidad_km ? s.profundidad_km.toFixed(1) + ' km' : 'sin dato'}<br/>
-      ${miUbicacion ? textoDistancia(s.lat, s.lon) + '<br/>' : ''}
-      Fuente: ${s.fuentes.join(' + ')}<br/>
-      <a href="${s.url}" target="_blank" rel="noopener">Ver detalle</a>
-    `);
-    marcador.addTo(capaSismos);
-  });
+  mapa.setSismos(ordenados.map((s) => ({
+    lat: s.lat,
+    lon: s.lon,
+    color: colorPorMagnitud(s.magnitud),
+    radio: radioPorMagnitud(s.magnitud),
+    raw: s,
+  })));
 
   reconstruirCombinadoYRenderPanel();
 
@@ -233,7 +248,8 @@ async function cargarSismos() {
     ultimosSismos = data.sismos;
 
     if (primeraCargaCompleta && nuevos.length > 0) {
-      alertarSismoNuevo(nuevos[0]);
+      const cercano = sismoNuevoMasCercano(nuevos);
+      if (cercano) alertarSismoNuevo(cercano);
     }
     primeraCargaCompleta = true;
 
@@ -357,7 +373,7 @@ function conectarEMSC() {
 
     if (!yaExistia && !idsVistos.has(sismo.id) && primeraCargaCompleta) {
       idsVistos.add(sismo.id);
-      alertarSismoNuevo(sismo);
+      if (estaCercaParaAlertar(sismo.lat, sismo.lon)) alertarSismoNuevo(sismo);
     }
   };
 
@@ -391,15 +407,7 @@ async function cargarIncendios() {
     const data = await res.json();
     ultimosIncendios = data.incendios || [];
 
-    capaIncendios.clearLayers();
-    ultimosIncendios.forEach((f) => {
-      const marcador = L.marker([f.lat, f.lon], { icon: iconoEmoji('🔥', 'icono-fuego') });
-      marcador.bindPopup(
-        `<strong>Foco de incendio activo</strong>${f.frp ? ` — potencia ${Math.round(f.frp)} MW` : ''}<br/>` +
-        `${f.fecha || ''} ${f.hora_utc || ''} UTC<br/>${miUbicacion ? textoDistancia(f.lat, f.lon) : ''}`
-      );
-      marcador.addTo(capaIncendios);
-    });
+    mapa.setIncendios(ultimosIncendios.map((f) => ({ lat: f.lat, lon: f.lon, raw: f })));
 
     const nota = document.getElementById('nota-incendios');
     if (!data.configurado) {
@@ -426,18 +434,9 @@ async function cargarCatastrofes() {
     const data = await res.json();
     ultimasCatastrofes = data.catastrofes || [];
 
-    capaCatastrofes.clearLayers();
-    ultimasCatastrofes.forEach((c) => {
-      const marcador = L.marker([c.lat, c.lon], {
-        icon: iconoEmoji(c.emoji, `icono-catastrofe alerta-${c.nivel_alerta}`),
-      });
-      marcador.bindPopup(
-        `<strong>${c.tipo_nombre}</strong><br/>${c.titulo}<br/>${c.pais || ''}<br/>` +
-        `${formatearHora(c.hora)}<br/>${miUbicacion ? textoDistancia(c.lat, c.lon) + '<br/>' : ''}` +
-        `<a href="${c.url}" target="_blank" rel="noopener">Ver detalle</a>`
-      );
-      marcador.addTo(capaCatastrofes);
-    });
+    mapa.setCatastrofes(ultimasCatastrofes.map((c) => ({
+      lat: c.lat, lon: c.lon, emoji: c.emoji, colorHalo: colorPorAlerta(c.nivel_alerta), raw: c,
+    })));
 
     const nota = document.getElementById('nota-catastrofes');
     if (nota) {
@@ -470,7 +469,13 @@ function reconstruirCombinadoYRenderPanel() {
     tipo: 'catastrofe', icono: c.emoji, titulo: `${c.tipo_nombre} — ${c.titulo}`, lat: c.lat, lon: c.lon, hora: c.hora,
   }));
 
-  eventosCombinados = [...deSismos, ...deIncendios, ...deCatastrofes].sort((a, b) => (b.hora || 0) - (a.hora || 0));
+  // El historico muestra primero lo mas cercano a vos (o a Mendoza si todavia
+  // no sabemos donde estas) — no lo mas reciente. Funciona en cualquier parte
+  // del mundo porque la referencia es tu ubicacion real, no algo fijo.
+  const ref = referenciaDistancia();
+  eventosCombinados = [...deSismos, ...deIncendios, ...deCatastrofes].sort(
+    (a, b) => distanciaKm(ref.lat, ref.lon, a.lat, a.lon) - distanciaKm(ref.lat, ref.lon, b.lat, b.lon)
+  );
 
   const contadorMapa = document.getElementById('mapa-eventos-count');
   if (contadorMapa) contadorMapa.textContent = `${eventosCombinados.length} EVENTOS DETECTADOS`;
@@ -522,9 +527,9 @@ function actualizarMasCercano() {
 // Sugerencia de evacuacion: HEURISTICA, no una ruta oficial.
 function actualizarSugerenciaEvacuacion() {
   const el = document.getElementById('sugerencia-evacuacion');
-  capaEvacuacion.clearLayers();
 
   if (!miUbicacion || eventosCombinados.length === 0) {
+    mapa.setEvacuacionLinea(null);
     el.classList.add('oculto');
     return;
   }
@@ -544,6 +549,7 @@ function actualizarSugerenciaEvacuacion() {
   });
 
   if (!masCercano || minKm > UMBRAL_EVACUACION_KM) {
+    mapa.setEvacuacionLinea(null);
     el.classList.add('oculto');
     return;
   }
@@ -562,17 +568,8 @@ function actualizarSugerenciaEvacuacion() {
   el.classList.remove('oculto');
 
   const destino = destinoDesdeRumbo(miUbicacion.lat, miUbicacion.lon, direccionGrados, 60);
-  L.polyline(
-    [[miUbicacion.lat, miUbicacion.lon], [destino.lat, destino.lon]],
-    { className: 'linea-evacuacion', color: '#00e5ff', weight: 3, opacity: 0.85 }
-  ).addTo(capaEvacuacion);
-  // Etiqueta permanente en la punta de la línea: para que se entienda en el
-  // mapa mismo qué es esa línea, sin tener que leer el panel lateral.
-  L.marker([destino.lat, destino.lon], { icon: iconoEmoji('🧭', 'icono-evacuacion'), interactive: false })
-    .bindTooltip('Sugerencia de evacuación (no oficial)', {
-      permanent: true, direction: 'top', className: 'tooltip-evacuacion',
-    })
-    .addTo(capaEvacuacion);
+  // El globo dibuja el arco + la etiqueta permanente "🧭" en la punta.
+  mapa.setEvacuacionLinea({ from: miUbicacion, to: destino });
 }
 
 // ---------------------------------------------------------------------
@@ -580,27 +577,10 @@ function actualizarSugerenciaEvacuacion() {
 // ---------------------------------------------------------------------
 
 function actualizarMarcadorUbicacion() {
-  if (marcadorUbicacion) mapa.removeLayer(marcadorUbicacion);
-  if (circuloPrecision) mapa.removeLayer(circuloPrecision);
-
-  marcadorUbicacion = L.circleMarker([miUbicacion.lat, miUbicacion.lon], {
-    radius: 8,
-    color: '#00e5ff',
-    fillColor: '#00e5ff',
-    fillOpacity: 0.9,
-    weight: 2,
-    className: 'marcador-ubicacion',
-  }).addTo(mapa).bindPopup('Estás acá (aproximado)');
-
-  circuloPrecision = L.circle([miUbicacion.lat, miUbicacion.lon], {
-    radius: miUbicacion.precision || 500,
-    color: '#00e5ff',
-    weight: 1,
-    fillOpacity: 0.07,
-  }).addTo(mapa);
+  mapa.setMiUbicacion(miUbicacion);
 }
 
-function pedirUbicacion({ boton, centrar = true, esAutomatico = false, zoom = 9 } = {}) {
+function pedirUbicacion({ boton, centrar = true, esAutomatico = false } = {}) {
   if (!navigator.geolocation) {
     if (!esAutomatico) alert('Tu navegador no soporta geolocalización.');
     return;
@@ -610,7 +590,7 @@ function pedirUbicacion({ boton, centrar = true, esAutomatico = false, zoom = 9 
     (pos) => {
       miUbicacion = { lat: pos.coords.latitude, lon: pos.coords.longitude, precision: pos.coords.accuracy };
       actualizarMarcadorUbicacion();
-      if (centrar) mapa.flyTo([miUbicacion.lat, miUbicacion.lon], Math.max(mapa.getZoom(), zoom));
+      if (centrar) mapa.focusOn(miUbicacion.lat, miUbicacion.lon);
       reconstruirCombinadoYRenderPanel();
     },
     (err) => {
@@ -639,36 +619,23 @@ function mensajeErrorUbicacion(err) {
   return 'No pudimos obtener tu ubicación: ' + err.message;
 }
 
-const ControlUbicacion = L.Control.extend({
-  options: { position: 'topright' },
-  onAdd: function () {
-    const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
-    const btn = L.DomUtil.create('a', 'control-mapa', div);
-    btn.href = '#';
-    btn.title = 'Ver mi ubicación y la distancia a cada evento';
-    btn.innerHTML = '📍';
-    L.DomEvent.disableClickPropagation(div);
-    L.DomEvent.disableScrollPropagation(div);
-    L.DomEvent.on(btn, 'click', (e) => {
-      L.DomEvent.preventDefault(e);
-      pedirUbicacion({ boton: btn });
-    });
-    return div;
-  },
-});
-mapa.addControl(new ControlUbicacion());
+const botonUbicarMapa = document.getElementById('boton-ubicar-mapa');
+if (botonUbicarMapa) {
+  botonUbicarMapa.addEventListener('click', () => pedirUbicacion({ boton: botonUbicarMapa }));
+}
 
 // ---------------------------------------------------------------------
 // Capas: checkboxes
 // ---------------------------------------------------------------------
 
+document.getElementById('capa-sismos').addEventListener('change', (e) => {
+  mapa.setCapaVisible('sismos', e.target.checked);
+});
 document.getElementById('capa-incendios').addEventListener('change', (e) => {
-  if (e.target.checked) capaIncendios.addTo(mapa);
-  else mapa.removeLayer(capaIncendios);
+  mapa.setCapaVisible('incendios', e.target.checked);
 });
 document.getElementById('capa-catastrofes').addEventListener('change', (e) => {
-  if (e.target.checked) capaCatastrofes.addTo(mapa);
-  else mapa.removeLayer(capaCatastrofes);
+  mapa.setCapaVisible('catastrofes', e.target.checked);
 });
 
 // ---------------------------------------------------------------------
@@ -682,25 +649,10 @@ function cerrarSOS() {
   document.getElementById('fondo-sos').classList.add('oculto');
 }
 
-const ControlSOS = L.Control.extend({
-  options: { position: 'topright' },
-  onAdd: function () {
-    const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
-    const btn = L.DomUtil.create('a', 'control-mapa control-sos', div);
-    btn.href = '#';
-    btn.title = 'Números de emergencia y compartir ubicación';
-    btn.innerHTML = '🆘';
-    L.DomEvent.disableClickPropagation(div);
-    L.DomEvent.disableScrollPropagation(div);
-    L.DomEvent.on(btn, 'click', (e) => {
-      L.DomEvent.preventDefault(e);
-      abrirSOS();
-    });
-    return div;
-  },
-});
-mapa.addControl(new ControlSOS());
+const botonSosMapa = document.getElementById('boton-sos-mapa');
+if (botonSosMapa) botonSosMapa.addEventListener('click', abrirSOS);
 
+document.getElementById('boton-sos-top').addEventListener('click', abrirSOS);
 document.getElementById('boton-abrir-sos-2').addEventListener('click', abrirSOS);
 document.getElementById('boton-cerrar-sos').addEventListener('click', cerrarSOS);
 document.getElementById('fondo-sos').addEventListener('click', (e) => {
@@ -759,7 +711,7 @@ if (botonPanelMovil && panelLateral) {
   botonPanelMovil.addEventListener('click', () => {
     panelLateral.classList.toggle('abierto');
   });
-  mapa.on('click dragstart', () => {
+  mapa.onInteractionStart(() => {
     panelLateral.classList.remove('abierto');
   });
 }
@@ -785,7 +737,7 @@ setInterval(cargarCatastrofes, REFRESCO_OTRAS_MS);
 
 // Si el navegador ya tiene permiso (o lo concede al toque), centramos solos;
 // si no, el mapa se queda en la vista global y el usuario usa el botón 📍.
-pedirUbicacion({ centrar: true, esAutomatico: true, zoom: 9 });
+pedirUbicacion({ centrar: true, esAutomatico: true });
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {
