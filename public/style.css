@@ -920,3 +920,71 @@ body { background: #050a12; color: var(--texto); }
   .mapa-status-chip { letter-spacing:.06em; }
   .boton-sos-top { padding:8px 10px; font-size:.76rem; }
 }
+
+
+/* Mendoza Eye refinement — clearer hierarchy, safer mobile controls */
+:root { color-scheme: dark; }
+button, select, a { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visible {
+  outline: 2px solid #5bdcf5; outline-offset: 3px;
+}
+.topbar { gap: 14px; }
+.controles { flex: 1 1 auto; }
+#estado { font-size: .72rem; color: #9bb1c8; text-shadow: none; }
+.estado-vivo .bolita { box-shadow: 0 0 0 3px rgba(66,223,170,.1), 0 0 12px rgba(66,223,170,.7); }
+.estado-vivo.reconectando .bolita { background:#ffb547; box-shadow:0 0 0 3px rgba(255,181,71,.1),0 0 12px rgba(255,181,71,.65); }
+.mapa-legend {
+  position:absolute; z-index:460; right:16px; bottom:17px; display:flex; gap:13px; align-items:center;
+  padding:9px 12px; border:1px solid rgba(88,175,207,.2); border-radius:8px;
+  background:rgba(5,12,22,.86); backdrop-filter:blur(10px);
+  color:#aebfd1; font:700 .67rem 'Rajdhani',sans-serif; letter-spacing:.04em; pointer-events:none;
+}
+.mapa-legend span { display:flex; align-items:center; gap:6px; white-space:nowrap; }
+.legend-dot { display:inline-block; width:7px; height:7px; border-radius:50%; }
+.legend-dot.quake { background:#ff6573; box-shadow:0 0 8px #ff6573; }
+.legend-dot.fire { background:#ffb547; box-shadow:0 0 8px #ffb547; }
+.legend-dot.other { background:#55dff7; box-shadow:0 0 8px #55dff7; }
+.panel { overscroll-behavior:contain; }
+.panel section { scroll-margin-top:12px; }
+.item {
+  display:grid; grid-template-columns:28px minmax(0,1fr); gap:3px 8px; padding:10px 11px;
+  background:rgba(16,29,44,.74); border:1px solid rgba(123,158,190,.12);
+  transition:border-color .18s,background .18s;
+}
+.item:hover { background:rgba(20,39,58,.9); border-color:rgba(79,203,232,.3); }
+.item .mag { grid-row:span 2; display:grid; place-items:center; align-self:center; }
+.item .lugar { color:#e0ebf8; font-weight:700; font-size:.84rem; line-height:1.25; overflow-wrap:anywhere; }
+.item .hora { color:#8198b0; font-size:.72rem; }
+.mas-cercano, .sugerencia-evacuacion { border-radius:11px; border:1px solid rgba(255,181,71,.24); background:rgba(74,48,15,.2); padding:13px; margin:0 0 12px; font-size:.84rem; line-height:1.5; }
+.boton-ubicar, .boton-compartir-ubicacion, .boton-cerrar-sos { min-height:44px; font:700 .9rem 'Rajdhani',sans-serif; cursor:pointer; }
+.panel-sos { width:min(560px, calc(100vw - 28px)); max-height:calc(100dvh - 28px); overflow:auto; padding:clamp(18px,3vw,28px); }
+.llamada { display:flex; align-items:center; gap:14px; padding:13px; text-decoration:none; }
+.llamada .titulo { display:block; font-weight:700; }
+.llamada .desc { display:block; margin-top:4px; color:#9db2c8; font-size:.8rem; line-height:1.35; }
+.boton-compartir-ubicacion { width:100%; }
+.boton-cerrar-sos { width:100%; margin-top:10px; }
+@media (min-width: 901px) and (max-height: 760px) {
+  .topbar { min-height:64px; padding:8px 16px; }
+  .panel { padding:10px; }
+  .panel section, .alerta-temprana { padding:11px; margin-bottom:9px; }
+}
+@media (max-width: 900px) {
+  .mapa-legend { right:10px; bottom:17px; gap:8px; padding:8px 9px; font-size:.61rem; }
+  .mapa-coordinates { bottom:76px; }
+  .boton-panel-movil { bottom:65px; left:auto; right:10px; transform:none; }
+  .panel { transform:translateY(calc(100% - 58px)); }
+  .panel.abierto { transform:translateY(0); }
+  .panel::before { margin-bottom:10px; }
+  .fondo-sos { z-index:1000; padding:12px; }
+  .panel-sos { border-radius:16px; }
+}
+@media (max-width: 480px) {
+  .mapa-legend { left:10px; right:auto; bottom:17px; }
+  .boton-panel-movil { bottom:61px; }
+  .mapa-coordinates { max-width:calc(100% - 20px); }
+  .mapa-status-chip { max-width:calc(100% - 20px); }
+  .controles label { min-width:0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior:auto !important; animation-duration:.01ms !important; transition-duration:.01ms !important; }
+}
