@@ -14,7 +14,7 @@
 // style.css, etc.), subile la version a este nombre de cache (v2, v3, ...).
 // Eso hace que el navegador detecte que este archivo cambio de contenido y
 // reinstale el service worker, borrando el cache viejo en "activate".
-const CACHE = 'mendoza-sismos-v2';
+const CACHE = 'mendoza-eye-v3';
 const ARCHIVOS_SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (event) => {
