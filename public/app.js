@@ -472,6 +472,10 @@ function reconstruirCombinadoYRenderPanel() {
 
   eventosCombinados = [...deSismos, ...deIncendios, ...deCatastrofes].sort((a, b) => (b.hora || 0) - (a.hora || 0));
 
+  const contadorMapa = document.getElementById('mapa-eventos-count');
+  if (contadorMapa) contadorMapa.textContent = `${eventosCombinados.length} EVENTOS DETECTADOS`;
+  const contadorMovil = document.getElementById('contador-movil');
+  if (contadorMovil) contadorMovil.textContent = String(eventosCombinados.length);
   actualizarLista();
   actualizarMasCercano();
   actualizarSugerenciaEvacuacion();
@@ -789,3 +793,9 @@ if ('serviceWorker' in navigator) {
     // instalacion PWA offline.
   });
 }
+
+
+// Accesibilidad: cerrar el diálogo de emergencia con Escape.
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') cerrarSOS();
+});
