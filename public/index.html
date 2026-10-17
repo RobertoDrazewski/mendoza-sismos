@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ojo Global — Alertas de Catástrofes</title>
+  <title>Mendoza Eye — Centro de alertas</title>
   <meta name="theme-color" content="#05080c" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon-192.png" />
@@ -13,7 +13,7 @@
 </head>
 <body>
   <header class="topbar">
-    <h1>🌎 Ojo Global — Catástrofes en vivo</h1>
+    <div class="brand-lockup"><span class="brand-mark">◉</span><div><h1>MENDOZA <span>EYE</span></h1><p class="brand-subtitle">CENTRO DE ALERTAS · RED GLOBAL</p></div></div>
     <div class="controles">
       <label>
         Rango (sismos):
@@ -39,14 +39,14 @@
         <label><input type="checkbox" id="capa-catastrofes" checked /> 🌊 Otras</label>
       </span>
       <span id="estado-vivo" class="estado-vivo reconectando"><span class="bolita"></span><span id="estado-vivo-texto">conectando</span></span>
-      <span id="estado">cargando...</span>
+      <span id="estado">cargando...</span><button id="boton-sos-top" class="boton-sos-top" type="button" aria-label="Abrir emergencias">SOS <span>↗</span></button>
     </div>
   </header>
 
   <div class="layout">
     <div class="mapa-envoltorio">
       <div id="mapa"></div>
-      <div class="mapa-hud"></div>
+      <div class="mapa-hud"></div><div class="mapa-status-chip"><span class="status-pulse"></span><span>MONITOREO EN VIVO</span><span class="chip-separator"></span><span id="mapa-eventos-count">RED GLOBAL</span></div><div class="mapa-coordinates">MENDOZA, ARGENTINA <span>·</span> 32°53′S 68°50′W</div>
       <div class="mapa-borde-glow"></div>
 
       <button id="boton-panel-movil" class="boton-panel-movil" type="button">
